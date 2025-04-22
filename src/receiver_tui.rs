@@ -50,14 +50,18 @@ impl App {
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
-        match event::read()? {
-            // it's important to check that the event is a key press event as
-            // crossterm also emits key release and repeat events on Windows.
-            Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                self.handle_key_event(key_event)
+        if let Ok(avail) = event::poll(Duration::from_millis(500)) {
+            if avail {
+                match event::read()? {
+                    // it's important to check that the event is a key press event as
+                    // crossterm also emits key release and repeat events on Windows.
+                    Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
+                        self.handle_key_event(key_event)
+                    }
+                    _ => {}
+                };
             }
-            _ => {}
-        };
+        }
         Ok(())
     }
 
@@ -98,7 +102,7 @@ impl Widget for &App {
             .expect("no receiver set")
             .recv_timeout(Duration::from_millis(500));
 
-        let mut counter_text;
+        let counter_text;
         if let Ok(stats) = stats {
             counter_text = Text::from(vec![Line::from(vec![
                 //"Hello World!".into()

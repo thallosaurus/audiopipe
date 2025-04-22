@@ -10,8 +10,8 @@ const SENDER_BUFFER_SIZE: u16 = 2048;
 pub mod receiver_tui;
 
 pub struct Stats {
-    received: usize,
-    occupied_buffer: usize
+    pub received: usize,
+    pub occupied_buffer: usize
 }
 
 pub fn receiver() -> anyhow::Result<mpsc::Receiver<Stats>> {
