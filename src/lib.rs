@@ -4,19 +4,24 @@ use cpal::{traits::{DeviceTrait, HostTrait, StreamTrait}, Sample, Stream};
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
 
 const PORT: u16 = 42069;
-const RECEIVER_BUFFER_SIZE: usize = 2048;
+const RECEIVER_BUFFER_SIZE: usize = 4096;
 const SENDER_BUFFER_SIZE: usize = 4096;
 
 pub mod receiver_tui;
 
-pub struct Stats {
+pub struct UdpStats {
     pub received: usize,
     pub occupied_buffer: usize
 }
 
+pub struct CpalStats {
+    requested_sample_length: usize
+}
+
 pub struct AudioReceiver {
     stream: Stream,
-    pub rx: Receiver<Stats>
+    pub udp_rx: Receiver<UdpStats>,
+    pub cpal_rx: Receiver<CpalStats>
 }
 
 pub fn receiver() -> anyhow::Result<AudioReceiver> {
@@ -26,7 +31,7 @@ pub fn receiver() -> anyhow::Result<AudioReceiver> {
     println!("Using device: {}", device.name()?);
     println!("Sample format: {:?}", config.sample_format());
 
-    let (tx, rx) = mpsc::channel::<Stats>();
+    let (tx, udp_rx) = mpsc::channel::<UdpStats>();
 
     let ring = ringbuf::HeapRb::<f32>::new(2048);
     let (mut producer, mut consumer) = ring.split();
@@ -55,12 +60,14 @@ pub fn receiver() -> anyhow::Result<AudioReceiver> {
 
                     let occupied_buffer = prod.occupied_len();
 
-                    tx.send(Stats { received, occupied_buffer }).unwrap();
+                    tx.send(UdpStats { received, occupied_buffer }).unwrap();
                 },
                 Err(e) => eprintln!("UDP receive error: {:?}", e),
             }
         }
     });
+
+    let (cpal_tx, cpal_rx) = mpsc::channel::<CpalStats>();
 
     let stream = device.build_output_stream(
         &config.into(),
@@ -68,13 +75,15 @@ pub fn receiver() -> anyhow::Result<AudioReceiver> {
             for sample in output.iter_mut() {
                 *sample = consumer.try_pop().unwrap_or(Sample::EQUILIBRIUM);
             }
+            cpal_tx.send(CpalStats { requested_sample_length: output.len() }).unwrap();
+            
         }, |err| eprintln!("Stream error: {}", err), None)?;
 
         stream.play()?;
 
         //wait_for_key("Audio stream started. Press Enter to stop.");
 
-        Ok(AudioReceiver { stream, rx })
+        Ok(AudioReceiver { stream, udp_rx, cpal_rx })
 }
 
 pub fn sender(ip: net::Ipv4Addr) -> anyhow::Result<()> {

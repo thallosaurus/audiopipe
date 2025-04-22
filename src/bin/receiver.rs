@@ -4,5 +4,5 @@ fn main() {
     enumerate().unwrap();
     let receiver = receiver().unwrap();
 
-    run_tui(receiver.rx).unwrap();
+    run_tui(receiver.udp_rx, receiver.cpal_rx).unwrap();
 }

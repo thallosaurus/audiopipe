@@ -15,11 +15,11 @@ use ratatui::{
     widgets::{Block, Paragraph, Widget},
 };
 
-use crate::Stats;
+use crate::{CpalStats, UdpStats};
 
-pub fn run_tui(rx: Receiver<Stats>) -> io::Result<()> {
+pub fn run_tui(rx: Receiver<UdpStats>, cpal_rx: Receiver<CpalStats>) -> io::Result<()> {
     let mut terminal = ratatui::init();
-    let app_result = App::default().set_receiver(rx).run(&mut terminal);
+    let app_result = App::default().set_receiver(rx, cpal_rx).run(&mut terminal);
     ratatui::restore();
     app_result
 }
@@ -27,7 +27,8 @@ pub fn run_tui(rx: Receiver<Stats>) -> io::Result<()> {
 #[derive(Debug, Default)]
 pub struct App {
     exit: bool,
-    receiver: Arc<Mutex<Option<Receiver<Stats>>>>,
+    udp_rx: Arc<Mutex<Option<Receiver<UdpStats>>>>,
+    cpal_rx: Arc<Mutex<Option<Receiver<CpalStats>>>>,
 }
 
 impl App {
@@ -40,8 +41,13 @@ impl App {
         Ok(())
     }
 
-    pub fn set_receiver(&mut self, receiver: Receiver<Stats>) -> &mut Self {
-        self.receiver = Arc::new(Mutex::new(Some(receiver)));
+    pub fn set_receiver(
+        &mut self,
+        udp_rx: Receiver<UdpStats>,
+        cpal_rx: Receiver<CpalStats>,
+    ) -> &mut Self {
+        self.udp_rx = Arc::new(Mutex::new(Some(udp_rx)));
+        self.cpal_rx = Arc::new(Mutex::new(Some(cpal_rx)));
         self
     }
 
@@ -95,26 +101,43 @@ impl Widget for &App {
             .title_bottom(instructions.centered())
             .border_set(border::THICK);
 
-        let r = self.receiver.lock().unwrap();
+        let udp_rx = self.udp_rx.lock().unwrap();
+        let cpal_rx = self.cpal_rx.lock().unwrap();
 
-        let stats = r
+        let udp_stats = udp_rx
+            .as_ref()
+            .expect("no receiver set")
+            .recv_timeout(Duration::from_millis(500));
+
+        let cpal_stats = cpal_rx
             .as_ref()
             .expect("no receiver set")
             .recv_timeout(Duration::from_millis(500));
 
         let counter_text;
-        if let Ok(stats) = stats {
-            counter_text = Text::from(vec![Line::from(vec![
-                //"Hello World!".into()
-                format!("Occupied Size: {}", stats.occupied_buffer).into(),
-                format!("Received Samples: {}", stats.received).into(),
-            ])]);
+        if let Ok(stats) = udp_stats {
+            counter_text = format!("Occupied Size: {}, Received Samples: {}", stats.occupied_buffer, stats.received);
+
         } else {
-            counter_text = Text::from(vec![Line::from(vec![
+            /*counter_text = Text::from(vec![Line::from(vec![
                 //"Hello World!".into()
                 "No Data Available".into(),
-            ])]);
+            ])]);*/
+            counter_text = format!("No Data Available");
         }
+
+        let cpal_stats_text;
+        if let Ok(stats) = cpal_stats {
+            cpal_stats_text = format!("Requested CPAL Buffer Length: {}", stats.requested_sample_length)
+        } else {
+            cpal_stats_text = format!("No recent audio request")
+        }
+
+        let counter_text = Text::from(vec![Line::from(vec![
+                //"Hello World!".into()
+                counter_text.into(),
+                cpal_stats_text.into()
+            ])]);
 
         Paragraph::new(counter_text)
             .centered()

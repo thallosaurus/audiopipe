@@ -1,6 +1,6 @@
 use std::{sync::mpsc, time::Duration};
 
-use audio_streamer::{enumerate, receiver, receiver_tui::run_tui, Stats};
+use audio_streamer::{enumerate, receiver, receiver_tui::run_tui, UdpStats};
 use rand::prelude::*;
 
 fn main() {
@@ -15,7 +15,7 @@ fn main() {
             let rnd1 = rng.random::<u16>();
             let rnd2 = rng.random::<u16>();
             
-            let stat = Stats {
+            let stat = UdpStats {
                 received: rnd1.into(),
                 occupied_buffer: rnd2.into(),
             };
