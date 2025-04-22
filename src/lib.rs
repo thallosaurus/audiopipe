@@ -33,7 +33,7 @@ pub fn receiver() -> anyhow::Result<AudioReceiver> {
 
     let (tx, udp_rx) = mpsc::channel::<UdpStats>();
 
-    let ring = ringbuf::HeapRb::<f32>::new(2048);
+    let ring = ringbuf::HeapRb::<f32>::new(RECEIVER_BUFFER_SIZE);
     let (mut producer, mut consumer) = ring.split();
     let producer = Arc::new(Mutex::new(producer));
 
