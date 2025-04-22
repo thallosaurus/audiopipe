@@ -4,6 +4,7 @@ use std::{
     time::Duration,
 };
 
+use cpal::{traits::DeviceTrait, Device};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     DefaultTerminal, Frame,
@@ -17,9 +18,14 @@ use ratatui::{
 
 use crate::{CpalStats, UdpStats};
 
-pub fn run_tui(rx: Receiver<UdpStats>, cpal_rx: Receiver<CpalStats>) -> io::Result<()> {
+pub fn run_tui(device: &Device, rx: Receiver<UdpStats>, cpal_rx: Receiver<CpalStats>) -> io::Result<()> {
     let mut terminal = ratatui::init();
-    let app_result = App::default().set_receiver(rx, cpal_rx).run(&mut terminal);
+
+    let mut app = App::default();
+    app.set_receiver(rx, cpal_rx);
+    app.device_name = device.name().unwrap_or("Unknown Device Name".into());
+
+    let app_result = app.run(&mut terminal);
     ratatui::restore();
     app_result
 }
@@ -29,6 +35,7 @@ pub struct App {
     exit: bool,
     udp_rx: Arc<Mutex<Option<Receiver<UdpStats>>>>,
     cpal_rx: Arc<Mutex<Option<Receiver<CpalStats>>>>,
+    device_name: String
 }
 
 impl App {
@@ -56,7 +63,7 @@ impl App {
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
-        if let Ok(avail) = event::poll(Duration::from_millis(500)) {
+        if let Ok(avail) = event::poll(Duration::from_millis(50)) {
             if avail {
                 match event::read()? {
                     // it's important to check that the event is a key press event as
@@ -89,10 +96,6 @@ impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let title = Line::from(" Counter App Tutorial ".bold());
         let instructions = Line::from(vec![
-            " Decrement ".into(),
-            "<Left>".blue().bold(),
-            " Increment ".into(),
-            "<Right>".blue().bold(),
             " Quit ".into(),
             "<Q> ".blue().bold(),
         ]);
@@ -114,33 +117,28 @@ impl Widget for &App {
             .expect("no receiver set")
             .recv_timeout(Duration::from_millis(500));
 
-        let counter_text;
+        let mut occupied= 0;
+        let mut received = 0;
         if let Ok(stats) = udp_stats {
-            counter_text = format!("Occupied Size: {}, Received Samples: {}", stats.occupied_buffer, stats.received);
+            //counter_text = format!("Occupied Size: {}, Received Samples: {}", stats.occupied_buffer, stats.received);
+            occupied = stats.occupied_buffer;
+            received = stats.received;
 
-        } else {
-            /*counter_text = Text::from(vec![Line::from(vec![
-                //"Hello World!".into()
-                "No Data Available".into(),
-            ])]);*/
-            counter_text = format!("No Data Available");
         }
 
-        let cpal_stats_text;
+        let mut requested_sample_length = 0;
         if let Ok(stats) = cpal_stats {
-            cpal_stats_text = format!("Requested CPAL Buffer Length: {}", stats.requested_sample_length)
-        } else {
-            cpal_stats_text = format!("No recent audio request")
+            requested_sample_length =  stats.requested_sample_length;
         }
 
-        let counter_text = Text::from(vec![Line::from(vec![
-                //"Hello World!".into()
-                counter_text.into(),
-                cpal_stats_text.into()
-            ])]);
+        let counter_text = vec![
+            Line::from(format!("Output Device Name: {}", self.device_name)),
+            Line::from(format!("Occupied Size: {}", occupied)),
+            Line::from(format!("Received Samples: {}", received)),
+            Line::from(format!("Requested Samples: {}", requested_sample_length))
+        ];
 
         Paragraph::new(counter_text)
-            .centered()
             .block(block)
             .render(area, buf);
     }

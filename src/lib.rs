@@ -1,89 +1,118 @@
-use std::{net::{self, UdpSocket}, sync::{mpsc::{self, Receiver}, Arc, Mutex}};
+use std::{
+    net::{self, UdpSocket},
+    sync::{
+        Arc, Mutex,
+        mpsc::{self, Receiver},
+    },
+};
 
-use cpal::{traits::{DeviceTrait, HostTrait, StreamTrait}, Sample, Stream};
+use cpal::{
+    Device, Sample, Stream, SupportedStreamConfig,
+    traits::{DeviceTrait, HostTrait, StreamTrait},
+};
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
 
 const PORT: u16 = 42069;
-const RECEIVER_BUFFER_SIZE: usize = 4096;
-const SENDER_BUFFER_SIZE: usize = 4096;
+const RECEIVER_BUFFER_SIZE: usize = 8192;
+const SENDER_BUFFER_SIZE: usize = 8192;
 
 pub mod receiver_tui;
 
 pub struct UdpStats {
     pub received: usize,
-    pub occupied_buffer: usize
+    pub occupied_buffer: usize,
 }
 
 pub struct CpalStats {
-    requested_sample_length: usize
+    requested_sample_length: usize,
 }
 
 pub struct AudioReceiver {
-    stream: Stream,
+    _stream: Stream,
     pub udp_rx: Receiver<UdpStats>,
-    pub cpal_rx: Receiver<CpalStats>
+    pub cpal_rx: Receiver<CpalStats>,
 }
 
-pub fn receiver() -> anyhow::Result<AudioReceiver> {
-    let host = cpal::default_host();
-    let device = host.default_output_device().expect("no output device available");
-    let config = device.default_output_config()?;
-    println!("Using device: {}", device.name()?);
-    println!("Sample format: {:?}", config.sample_format());
+impl AudioReceiver {
+    pub fn new(
+        device: &Device,
+        config: SupportedStreamConfig,
+        closing_rx: Receiver<bool>
+    ) -> anyhow::Result<AudioReceiver> {
+        //let device = host.default_output_device().expect("no output device available");
+        //let config = device.default_output_config()?;
+        println!("Using device: {}", device.name()?);
+        println!("Sample format: {:?}", config.sample_format());
 
-    let (tx, udp_rx) = mpsc::channel::<UdpStats>();
+        let (tx, udp_rx) = mpsc::channel::<UdpStats>();
 
-    let ring = ringbuf::HeapRb::<f32>::new(RECEIVER_BUFFER_SIZE);
-    let (mut producer, mut consumer) = ring.split();
-    let producer = Arc::new(Mutex::new(producer));
+        let ring = ringbuf::HeapRb::<f32>::new(RECEIVER_BUFFER_SIZE);
+        let (producer, mut consumer) = ring.split();
+        let producer = Arc::new(Mutex::new(producer));
 
-    let producer_clone = Arc::clone(&producer);
-    std::thread::spawn(move || {
-        let socket = UdpSocket::bind(("0.0.0.0", PORT)).expect("Failed to bind UDP socket");
-        println!("Listening on UDP port {}", PORT);
+        let producer_clone = Arc::clone(&producer);
+        std::thread::spawn(move || {
+            let socket = UdpSocket::bind(("0.0.0.0", PORT)).expect("Failed to bind UDP socket");
+            println!("Listening on UDP port {}", PORT);
 
-        let mut buf = [0u8; RECEIVER_BUFFER_SIZE];
-        
-        loop {
-            match socket.recv(&mut buf) {
-                Ok(received) => {
-                    let samples = received / std::mem::size_of::<f32>();
-                    let float_samples = unsafe {
-                        std::slice::from_raw_parts(buf.as_ptr() as *const f32, samples)
-                    };
+            let mut buf = [0u8; RECEIVER_BUFFER_SIZE];
 
-                    let mut prod = producer_clone.lock().unwrap();
+            loop {
+                match socket.recv(&mut buf) {
+                    Ok(received) => {
+                        let samples = received / std::mem::size_of::<f32>();
+                        let float_samples = unsafe {
+                            std::slice::from_raw_parts(buf.as_ptr() as *const f32, samples)
+                        };
 
-                    for &sample in float_samples {
-                        let _ = prod.try_push(sample);
+                        let mut prod = producer_clone.lock().unwrap();
+
+                        for &sample in float_samples {
+                            let _ = prod.try_push(sample);
+                        }
+
+                        let occupied_buffer = prod.occupied_len();
+
+                        if let Err(ok) = tx.send(UdpStats {
+                            received,
+                            occupied_buffer,
+                        }) {
+                            return;
+                        }
                     }
-
-                    let occupied_buffer = prod.occupied_len();
-
-                    tx.send(UdpStats { received, occupied_buffer }).unwrap();
-                },
-                Err(e) => eprintln!("UDP receive error: {:?}", e),
+                    Err(e) => eprintln!("UDP receive error: {:?}", e),
+                }
             }
-        }
-    });
+        });
 
-    let (cpal_tx, cpal_rx) = mpsc::channel::<CpalStats>();
+        let (cpal_tx, cpal_rx) = mpsc::channel::<CpalStats>();
 
-    let stream = device.build_output_stream(
-        &config.into(),
-        move |output: &mut [f32], _| {
-            for sample in output.iter_mut() {
-                *sample = consumer.try_pop().unwrap_or(Sample::EQUILIBRIUM);
-            }
-            cpal_tx.send(CpalStats { requested_sample_length: output.len() }).unwrap();
-            
-        }, |err| eprintln!("Stream error: {}", err), None)?;
+        let stream = device.build_output_stream(
+            &config.into(),
+            move |output: &mut [f32], _| {
+                for sample in output.iter_mut() {
+                    *sample = consumer.try_pop().unwrap_or(Sample::EQUILIBRIUM);
+                }
+                
+                if let Err(ok) = cpal_tx
+                    .send(CpalStats {
+                        requested_sample_length: output.len(),
+                    }) {
+                        return;
+                    }
+            },
+            |err| eprintln!("Stream error: {}", err),
+            None,
+        )?;
 
         stream.play()?;
 
-        //wait_for_key("Audio stream started. Press Enter to stop.");
-
-        Ok(AudioReceiver { stream, udp_rx, cpal_rx })
+        Ok(AudioReceiver {
+            _stream: stream,
+            udp_rx,
+            cpal_rx,
+        })
+    }
 }
 
 pub fn sender(ip: net::Ipv4Addr) -> anyhow::Result<()> {
@@ -122,9 +151,10 @@ pub fn sender(ip: net::Ipv4Addr) -> anyhow::Result<()> {
 fn build_stream<T>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
-    socket: UdpSocket
+    socket: UdpSocket,
 ) -> Result<cpal::Stream, anyhow::Error>
-where T: cpal::SizedSample + Send + 'static
+where
+    T: cpal::SizedSample + Send + 'static,
 {
     //let channels = config.channels as usize;
     Ok(device.build_input_stream(
@@ -133,11 +163,14 @@ where T: cpal::SizedSample + Send + 'static
             let bytes = unsafe {
                 std::slice::from_raw_parts(
                     data.as_ptr() as *const u8,
-                    data.len() * std::mem::size_of::<T>()
+                    data.len() * std::mem::size_of::<T>(),
                 )
             };
             let _ = socket.send(bytes);
-        }, |err| eprintln!("Stream error: {}", err), None)?)
+        },
+        |err| eprintln!("Stream error: {}", err),
+        None,
+    )?)
 }
 
 fn wait_for_key(msg: &str) {
