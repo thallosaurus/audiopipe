@@ -1,11 +1,11 @@
-use std::{net::{self, UdpSocket}, sync::{mpsc, Arc, Mutex}};
+use std::{net::{self, UdpSocket}, sync::{mpsc::{self, Receiver}, Arc, Mutex}};
 
-use cpal::{traits::{DeviceTrait, HostTrait, StreamTrait}, Sample};
+use cpal::{traits::{DeviceTrait, HostTrait, StreamTrait}, Sample, Stream};
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
 
 const PORT: u16 = 42069;
-const RECEIVER_BUFFER_SIZE: u16 = 2048;
-const SENDER_BUFFER_SIZE: u16 = 2048;
+const RECEIVER_BUFFER_SIZE: usize = 2048;
+const SENDER_BUFFER_SIZE: usize = 4096;
 
 pub mod receiver_tui;
 
@@ -14,7 +14,12 @@ pub struct Stats {
     pub occupied_buffer: usize
 }
 
-pub fn receiver() -> anyhow::Result<mpsc::Receiver<Stats>> {
+pub struct AudioReceiver {
+    stream: Stream,
+    pub rx: Receiver<Stats>
+}
+
+pub fn receiver() -> anyhow::Result<AudioReceiver> {
     let host = cpal::default_host();
     let device = host.default_output_device().expect("no output device available");
     let config = device.default_output_config()?;
@@ -32,7 +37,7 @@ pub fn receiver() -> anyhow::Result<mpsc::Receiver<Stats>> {
         let socket = UdpSocket::bind(("0.0.0.0", PORT)).expect("Failed to bind UDP socket");
         println!("Listening on UDP port {}", PORT);
 
-        let mut buf = [0u8; 2048];
+        let mut buf = [0u8; RECEIVER_BUFFER_SIZE];
         
         loop {
             match socket.recv(&mut buf) {
@@ -69,7 +74,7 @@ pub fn receiver() -> anyhow::Result<mpsc::Receiver<Stats>> {
 
         //wait_for_key("Audio stream started. Press Enter to stop.");
 
-        Ok(rx)
+        Ok(AudioReceiver { stream, rx })
 }
 
 pub fn sender(ip: net::Ipv4Addr) -> anyhow::Result<()> {
