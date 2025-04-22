@@ -1,18 +1,29 @@
-use std::{net::{self, UdpSocket}, sync::{Arc, Mutex}};
+use std::{net::{self, UdpSocket}, sync::{mpsc, Arc, Mutex}};
 
 use cpal::{traits::{DeviceTrait, HostTrait, StreamTrait}, Sample};
-use ringbuf::traits::{Consumer, Producer, Split};
+use ringbuf::traits::{Consumer, Observer, Producer, Split};
 
 const PORT: u16 = 42069;
+const RECEIVER_BUFFER_SIZE: u16 = 2048;
+const SENDER_BUFFER_SIZE: u16 = 2048;
 
-pub fn receiver() -> anyhow::Result<()> {
+pub mod receiver_tui;
+
+pub struct Stats {
+    received: usize,
+    occupied_buffer: usize
+}
+
+pub fn receiver() -> anyhow::Result<mpsc::Receiver<Stats>> {
     let host = cpal::default_host();
     let device = host.default_output_device().expect("no output device available");
     let config = device.default_output_config()?;
     println!("Using device: {}", device.name()?);
     println!("Sample format: {:?}", config.sample_format());
 
-    let ring = ringbuf::HeapRb::<f32>::new(1024);
+    let (tx, rx) = mpsc::channel::<Stats>();
+
+    let ring = ringbuf::HeapRb::<f32>::new(2048);
     let (mut producer, mut consumer) = ring.split();
     let producer = Arc::new(Mutex::new(producer));
 
@@ -21,8 +32,8 @@ pub fn receiver() -> anyhow::Result<()> {
         let socket = UdpSocket::bind(("0.0.0.0", PORT)).expect("Failed to bind UDP socket");
         println!("Listening on UDP port {}", PORT);
 
-        let mut buf = [0u8; 1024];
-
+        let mut buf = [0u8; 2048];
+        
         loop {
             match socket.recv(&mut buf) {
                 Ok(received) => {
@@ -36,6 +47,10 @@ pub fn receiver() -> anyhow::Result<()> {
                     for &sample in float_samples {
                         let _ = prod.try_push(sample);
                     }
+
+                    let occupied_buffer = prod.occupied_len();
+
+                    tx.send(Stats { received, occupied_buffer }).unwrap();
                 },
                 Err(e) => eprintln!("UDP receive error: {:?}", e),
             }
@@ -52,9 +67,9 @@ pub fn receiver() -> anyhow::Result<()> {
 
         stream.play()?;
 
-        wait_for_key("Audio stream started. Press Enter to stop.");
+        //wait_for_key("Audio stream started. Press Enter to stop.");
 
-        Ok(())
+        Ok(rx)
 }
 
 pub fn sender(ip: net::Ipv4Addr) -> anyhow::Result<()> {
@@ -62,7 +77,10 @@ pub fn sender(ip: net::Ipv4Addr) -> anyhow::Result<()> {
     let device = host.default_input_device().expect("no input device");
     let config = device.default_input_config()?;
 
-    let socket = UdpSocket::bind("0.0.0.0")?;
+    println!("Using device: {}", device.name()?);
+    println!("Sample format: {:?}", config.sample_format());
+
+    let socket = UdpSocket::bind("0.0.0.0:0")?;
     socket.connect(format!("{}:{}", ip, PORT))?;
 
     //let err_fn = |err| eprintln!("Stream error: {}", err);
@@ -83,7 +101,7 @@ pub fn sender(ip: net::Ipv4Addr) -> anyhow::Result<()> {
 
     stream.play()?;
 
-    
+    wait_for_key("Stream started... Press enter to stop");
     Ok(())
 }
 
