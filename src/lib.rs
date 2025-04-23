@@ -10,7 +10,7 @@ use cpal::{
     Device, Sample, Stream, SupportedStreamConfig,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
-use ringbuf::traits::{Consumer, Observer, Producer, Split};
+use ringbuf::{traits::{Consumer, Observer, Producer, Split}, HeapRb};
 
 const PORT: u16 = 42069;
 const RECEIVER_BUFFER_SIZE: usize = 8192;
@@ -115,7 +115,11 @@ impl AudioReceiver {
     }
 }
 
-pub fn sender(ip: net::Ipv4Addr) -> anyhow::Result<()> {
+pub struct AudioSender {
+    _stream: Stream
+}
+
+pub fn sender(ip: net::Ipv4Addr) -> anyhow::Result<AudioSender> {
     let host = cpal::default_host();
     let device = host.default_input_device().expect("no input device");
     let config = device.default_input_config()?;
@@ -129,8 +133,8 @@ pub fn sender(ip: net::Ipv4Addr) -> anyhow::Result<()> {
     //let err_fn = |err| eprintln!("Stream error: {}", err);
 
     let stream = match config.sample_format() {
-        cpal::SampleFormat::F32 => build_stream::<f32>(&device, &config.into(), socket),
-        cpal::SampleFormat::I16 => build_stream::<i16>(&device, &config.into(), socket),
+        cpal::SampleFormat::F32 => build_f32_stream(&device, &config.into(), socket),
+        /*cpal::SampleFormat::I16 => build_stream::<i16>(&device, &config.into(), socket),
         cpal::SampleFormat::U16 => build_stream::<u16>(&device, &config.into(), socket),
         cpal::SampleFormat::I8 => build_stream::<i8>(&device, &config.into(), socket),
         cpal::SampleFormat::I32 => build_stream::<i32>(&device, &config.into(), socket),
@@ -138,39 +142,52 @@ pub fn sender(ip: net::Ipv4Addr) -> anyhow::Result<()> {
         cpal::SampleFormat::U8 => build_stream::<u8>(&device, &config.into(), socket),
         cpal::SampleFormat::U32 => build_stream::<u32>(&device, &config.into(), socket),
         cpal::SampleFormat::U64 => build_stream::<u64>(&device, &config.into(), socket),
-        cpal::SampleFormat::F64 => build_stream::<f64>(&device, &config.into(), socket),
+        cpal::SampleFormat::F64 => build_stream::<f64>(&device, &config.into(), socket),*/
         _ => todo!(),
     }?;
 
     stream.play()?;
 
     wait_for_key("Stream started... Press enter to stop");
-    Ok(())
+    Ok(AudioSender { _stream: stream })
 }
 
-fn build_stream<T>(
+fn build_f32_stream(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     socket: UdpSocket,
 ) -> Result<cpal::Stream, anyhow::Error>
-where
-    T: cpal::SizedSample + Send + 'static,
 {
     //let channels = config.channels as usize;
-    Ok(device.build_input_stream(
+    let buf = HeapRb::<u8>::new(SENDER_BUFFER_SIZE);
+    let (prod, mut cons) = buf.split();
+
+    let stream = device.build_input_stream(
         config,
-        move |data: &[T], _| {
+        move |data: &[f32], _| {
             let bytes = unsafe {
                 std::slice::from_raw_parts(
-                    data.as_ptr() as *const u8,
-                    data.len() * std::mem::size_of::<T>(),
+                    data.as_ptr() as *const f32,
+                    data.len() * std::mem::size_of::<f32>(),
                 )
             };
-            let _ = socket.send(bytes);
         },
         |err| eprintln!("Stream error: {}", err),
         None,
-    )?)
+    )?;
+    
+    let udp_loop = std::thread::spawn(move || {
+        loop {
+            if cons.is_full() {
+                let mut buf = [0u8; RECEIVER_BUFFER_SIZE];
+
+                let data = cons.pop_slice(&mut buf);
+                let _ = socket.send(buf.as_mut_slice());
+            }
+        }
+    });
+
+    Ok(stream)
 }
 
 fn wait_for_key(msg: &str) {
