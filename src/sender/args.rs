@@ -1,7 +1,9 @@
 use clap::Parser;
 
+use crate::{PKG_DESC, PKG_NAME, VERSION};
+
 #[derive(Parser, Debug)]
-#[command(version, about = "Sender", long_about = None)]
+#[command(version, about = format!("{} sender (v{})", PKG_NAME, VERSION), long_about = None)]
 pub struct SenderCliArgs {
     /// Name of the Audio Host
     #[arg(short, long)]

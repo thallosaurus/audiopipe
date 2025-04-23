@@ -6,6 +6,10 @@ use hound::WavWriter;
 pub const DEFAULT_PORT: u16 = 42069;
 pub const SENDER_BUFFER_SIZE: usize = 1024;
 
+pub const PKG_NAME: &str = env!("CARGO_PKG_NAME");
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const PKG_DESC: &str = env!("CARGO_PKG_DESCRIPTION");
+
 pub mod receiver;
 pub mod sender;
 
