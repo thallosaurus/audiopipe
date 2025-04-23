@@ -33,7 +33,6 @@ impl AudioReceiver {
     ) -> anyhow::Result<AudioReceiver> {
         //let device = host.default_output_device().expect("no output device available");
         //let config = device.default_output_config()?;
-        println!("Using device: {}", device.name()?);
         //println!("Sample format: {:?}", config.sample_format());
 
         let (tx, udp_rx) = mpsc::channel::<UdpStats>();
