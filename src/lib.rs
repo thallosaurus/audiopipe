@@ -9,8 +9,7 @@ use std::{
 
 use bytemuck::Pod;
 use cpal::{
-    Device, Sample, Stream, SupportedStreamConfig,
-    traits::{DeviceTrait, HostTrait, StreamTrait},
+    traits::{DeviceTrait, HostTrait, StreamTrait}, Device, Sample, Stream, StreamConfig, SupportedStreamConfig
 };
 use ringbuf::{
     HeapRb,
@@ -70,6 +69,7 @@ impl AudioReceiver {
                         let mut prod = producer_clone.lock().unwrap();
 
                         for &sample in float_samples {
+                            // TODO implement fell-behind logic here
                             let _ = prod.try_push(sample);
                         }
 
@@ -120,20 +120,21 @@ pub struct AudioSender {
 impl AudioSender {
     pub fn new(
         device: Device,
-        config: SupportedStreamConfig,
+        config: StreamConfig,
         ip: net::Ipv4Addr,
     ) -> anyhow::Result<AudioSender> {
         println!("Using device: {}", device.name()?);
-        println!("Sample format: {:?}", config.sample_format());
+        //println!("Sample format: {:?}", config.sample_format());
 
         let socket = UdpSocket::bind("0.0.0.0:0")?;
         socket.connect(format!("{}:{}", ip, PORT))?;
 
         //let err_fn = |err| eprintln!("Stream error: {}", err);
 
-        let (stream, socket_loop) = match config.sample_format() {
-            cpal::SampleFormat::F32 => Self::build_stream::<f32>(&device, &config.into(), socket),
-            cpal::SampleFormat::I16 => Self::build_stream::<i16>(&device, &config.into(), socket),
+        // currently locked to f32 - TODO
+        let (stream, socket_loop) = Self::build_stream::<f32>(&device, &config.into(), socket)?;
+        //let (stream, socket_loop) = match config.sample_format() {
+        /*  cpal::SampleFormat::I16 => Self::build_stream::<i16>(&device, &config.into(), socket),
             cpal::SampleFormat::U16 => Self::build_stream::<u16>(&device, &config.into(), socket),
             cpal::SampleFormat::I8 => Self::build_stream::<i8>(&device, &config.into(), socket),
             cpal::SampleFormat::I32 => Self::build_stream::<i32>(&device, &config.into(), socket),
@@ -143,7 +144,7 @@ impl AudioSender {
             cpal::SampleFormat::U64 => Self::build_stream::<u64>(&device, &config.into(), socket),
             cpal::SampleFormat::F64 => Self::build_stream::<f64>(&device, &config.into(), socket),
             _ => todo!(),
-        }?;
+        }?;*/
 
         stream.play()?;
 
