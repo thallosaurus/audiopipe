@@ -1,6 +1,6 @@
 use std::{net::UdpSocket, sync::{mpsc::{self, Receiver}, Arc, Mutex}};
 
-use cpal::{traits::{DeviceTrait, StreamTrait}, Device, Sample, Stream, StreamConfig, SupportedStreamConfig};
+use cpal::{traits::{DeviceTrait, StreamTrait}, Device, Sample, Stream, StreamConfig};
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
 
 use crate::{DEFAULT_PORT, RECEIVER_BUFFER_SIZE};

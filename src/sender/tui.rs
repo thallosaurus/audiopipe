@@ -12,7 +12,7 @@ use ratatui::{
     layout::Rect,
     style::Stylize,
     symbols::border,
-    text::{Line, Text},
+    text::Line,
     widgets::{Block, Paragraph, Widget},
 };
 
@@ -98,7 +98,7 @@ impl App {
 
 impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let title = Line::from(" Counter App Tutorial ".bold());
+        let title = Line::from(" Audio Sender ".bold());
         let instructions = Line::from(vec![" Quit ".into(), "<Q> ".blue().bold()]);
         let block = Block::bordered()
             .title(title.centered())
@@ -137,10 +137,6 @@ impl Widget for &App {
             Line::from(format!("Received Samples: {}", received)),
             Line::from(format!("Requested Samples: {}", requested_sample_length)),
         ];
-
-        /*let counter_text = vec![
-            Line::from("Hello World")
-        ];*/
 
         Paragraph::new(counter_text).block(block).render(area, buf);
     }

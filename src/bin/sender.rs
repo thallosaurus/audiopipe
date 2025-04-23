@@ -1,4 +1,4 @@
-use std::{env, net::Ipv4Addr, str::FromStr, sync::mpsc::channel};
+use std::{net::Ipv4Addr, str::FromStr};
 
 use audio_streamer::{
     DEFAULT_PORT, SENDER_BUFFER_SIZE, enumerate, search_device, search_for_host,
@@ -6,7 +6,7 @@ use audio_streamer::{
 };
 use clap::Parser;
 use cpal::{
-    Device, Host, StreamConfig,
+    StreamConfig,
     traits::{DeviceTrait, HostTrait},
 };
 

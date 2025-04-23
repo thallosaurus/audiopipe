@@ -1,19 +1,5 @@
-use std::{
-    net::{self, UdpSocket},
-    sync::{
-        Arc, Mutex,
-        mpsc::{self, Receiver},
-    },
-    thread::JoinHandle,
-};
-
-use bytemuck::Pod;
 use cpal::{
-    traits::{DeviceTrait, HostTrait, StreamTrait}, Device, Host, Sample, Stream, StreamConfig, SupportedStreamConfig
-};
-use ringbuf::{
-    HeapRb,
-    traits::{Consumer, Observer, Producer, Split},
+    traits::{DeviceTrait, HostTrait}, Device, Host
 };
 
 pub const DEFAULT_PORT: u16 = 42069;

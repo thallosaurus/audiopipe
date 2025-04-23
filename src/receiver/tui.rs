@@ -12,7 +12,7 @@ use ratatui::{
     layout::Rect,
     style::Stylize,
     symbols::border,
-    text::{Line, Text},
+    text::Line,
     widgets::{Block, Paragraph, Widget},
 };
 
@@ -94,7 +94,7 @@ impl App {
 
 impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let title = Line::from(" Counter App Tutorial ".bold());
+        let title = Line::from(" Audio Receiver ".bold());
         let instructions = Line::from(vec![
             " Quit ".into(),
             "<Q> ".blue().bold(),
