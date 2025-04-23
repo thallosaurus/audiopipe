@@ -4,13 +4,18 @@ use std::{
         Arc, Mutex,
         mpsc::{self, Receiver},
     },
+    thread::JoinHandle,
 };
 
+use bytemuck::Pod;
 use cpal::{
     Device, Sample, Stream, SupportedStreamConfig,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
-use ringbuf::{traits::{Consumer, Observer, Producer, Split}, HeapRb};
+use ringbuf::{
+    HeapRb,
+    traits::{Consumer, Observer, Producer, Split},
+};
 
 const PORT: u16 = 42069;
 const RECEIVER_BUFFER_SIZE: usize = 8192;
@@ -37,7 +42,7 @@ impl AudioReceiver {
     pub fn new(
         device: &Device,
         config: SupportedStreamConfig,
-        closing_rx: Receiver<bool>
+        closing_rx: Receiver<bool>,
     ) -> anyhow::Result<AudioReceiver> {
         //let device = host.default_output_device().expect("no output device available");
         //let config = device.default_output_config()?;
@@ -60,10 +65,7 @@ impl AudioReceiver {
             loop {
                 match socket.recv(&mut buf) {
                     Ok(received) => {
-                        let samples = received / std::mem::size_of::<f32>();
-                        let float_samples = unsafe {
-                            std::slice::from_raw_parts(buf.as_ptr() as *const f32, samples)
-                        };
+                        let float_samples: &[f32] = bytemuck::cast_slice(&buf);
 
                         let mut prod = producer_clone.lock().unwrap();
 
@@ -93,13 +95,12 @@ impl AudioReceiver {
                 for sample in output.iter_mut() {
                     *sample = consumer.try_pop().unwrap_or(Sample::EQUILIBRIUM);
                 }
-                
-                if let Err(ok) = cpal_tx
-                    .send(CpalStats {
-                        requested_sample_length: output.len(),
-                    }) {
-                        return;
-                    }
+
+                if let Err(ok) = cpal_tx.send(CpalStats {
+                    requested_sample_length: output.len(),
+                }) {
+                    return;
+                }
             },
             |err| eprintln!("Stream error: {}", err),
             None,
@@ -116,83 +117,89 @@ impl AudioReceiver {
 }
 
 pub struct AudioSender {
-    _stream: Stream
+    _stream: Stream,
+    _socket_loop: JoinHandle<()>,
 }
 
-pub fn sender(ip: net::Ipv4Addr) -> anyhow::Result<AudioSender> {
-    let host = cpal::default_host();
-    let device = host.default_input_device().expect("no input device");
-    let config = device.default_input_config()?;
+impl AudioSender {
+    pub fn new(
+        device: Device,
+        config: SupportedStreamConfig,
+        ip: net::Ipv4Addr,
+    ) -> anyhow::Result<AudioSender> {
+        println!("Using device: {}", device.name()?);
+        println!("Sample format: {:?}", config.sample_format());
 
-    println!("Using device: {}", device.name()?);
-    println!("Sample format: {:?}", config.sample_format());
+        let socket = UdpSocket::bind("0.0.0.0:0")?;
+        socket.connect(format!("{}:{}", ip, PORT))?;
 
-    let socket = UdpSocket::bind("0.0.0.0:0")?;
-    socket.connect(format!("{}:{}", ip, PORT))?;
+        //let err_fn = |err| eprintln!("Stream error: {}", err);
 
-    //let err_fn = |err| eprintln!("Stream error: {}", err);
+        let (stream, socket_loop) = match config.sample_format() {
+            cpal::SampleFormat::F32 => Self::build_stream::<f32>(&device, &config.into(), socket),
+            cpal::SampleFormat::I16 => Self::build_stream::<i16>(&device, &config.into(), socket),
+            cpal::SampleFormat::U16 => Self::build_stream::<u16>(&device, &config.into(), socket),
+            cpal::SampleFormat::I8 => Self::build_stream::<i8>(&device, &config.into(), socket),
+            cpal::SampleFormat::I32 => Self::build_stream::<i32>(&device, &config.into(), socket),
+            cpal::SampleFormat::I64 => Self::build_stream::<i64>(&device, &config.into(), socket),
+            cpal::SampleFormat::U8 => Self::build_stream::<u8>(&device, &config.into(), socket),
+            cpal::SampleFormat::U32 => Self::build_stream::<u32>(&device, &config.into(), socket),
+            cpal::SampleFormat::U64 => Self::build_stream::<u64>(&device, &config.into(), socket),
+            cpal::SampleFormat::F64 => Self::build_stream::<f64>(&device, &config.into(), socket),
+            _ => todo!(),
+        }?;
 
-    let stream = match config.sample_format() {
-        cpal::SampleFormat::F32 => build_f32_stream(&device, &config.into(), socket),
-        /*cpal::SampleFormat::I16 => build_stream::<i16>(&device, &config.into(), socket),
-        cpal::SampleFormat::U16 => build_stream::<u16>(&device, &config.into(), socket),
-        cpal::SampleFormat::I8 => build_stream::<i8>(&device, &config.into(), socket),
-        cpal::SampleFormat::I32 => build_stream::<i32>(&device, &config.into(), socket),
-        cpal::SampleFormat::I64 => build_stream::<i64>(&device, &config.into(), socket),
-        cpal::SampleFormat::U8 => build_stream::<u8>(&device, &config.into(), socket),
-        cpal::SampleFormat::U32 => build_stream::<u32>(&device, &config.into(), socket),
-        cpal::SampleFormat::U64 => build_stream::<u64>(&device, &config.into(), socket),
-        cpal::SampleFormat::F64 => build_stream::<f64>(&device, &config.into(), socket),*/
-        _ => todo!(),
-    }?;
+        stream.play()?;
 
-    stream.play()?;
+        //wait_for_key("Stream started... Press enter to stop");
+        Ok(AudioSender {
+            _stream: stream,
+            _socket_loop: socket_loop,
+        })
+    }
 
-    wait_for_key("Stream started... Press enter to stop");
-    Ok(AudioSender { _stream: stream })
-}
+    fn build_stream<T>(
+        device: &cpal::Device,
+        config: &cpal::StreamConfig,
+        socket: UdpSocket,
+    ) -> Result<(cpal::Stream, JoinHandle<()>), anyhow::Error>
+    where
+        T: cpal::SizedSample + Send + Pod + 'static,
+    {
+        //let channels = config.channels as usize;
+        let buf = HeapRb::<T>::new(SENDER_BUFFER_SIZE);
+        let (mut prod, mut cons) = buf.split();
 
-fn build_f32_stream(
-    device: &cpal::Device,
-    config: &cpal::StreamConfig,
-    socket: UdpSocket,
-) -> Result<cpal::Stream, anyhow::Error>
-{
-    //let channels = config.channels as usize;
-    let buf = HeapRb::<u8>::new(SENDER_BUFFER_SIZE);
-    let (prod, mut cons) = buf.split();
+        let stream = device.build_input_stream(
+            config,
+            move |data: &[T], _| {
+                let bytes = unsafe {
+                    std::slice::from_raw_parts(
+                        data.as_ptr() as *const T,
+                        data.len() * std::mem::size_of::<T>(),
+                    )
+                };
+                prod.push_slice(bytes);
+            },
+            |err| eprintln!("Stream error: {}", err),
+            None,
+        )?;
 
-    let stream = device.build_input_stream(
-        config,
-        move |data: &[f32], _| {
-            let bytes = unsafe {
-                std::slice::from_raw_parts(
-                    data.as_ptr() as *const f32,
-                    data.len() * std::mem::size_of::<f32>(),
-                )
-            };
-        },
-        |err| eprintln!("Stream error: {}", err),
-        None,
-    )?;
-    
-    let udp_loop = std::thread::spawn(move || {
-        loop {
-            if cons.is_full() {
-                let mut buf = [0u8; RECEIVER_BUFFER_SIZE];
+        let udp_loop = std::thread::spawn(move || {
+            loop {
+                if cons.is_full() {
+                    let mut buf = Vec::<T>::new();
 
-                let data = cons.pop_slice(&mut buf);
-                let _ = socket.send(buf.as_mut_slice());
+                    cons.pop_slice(&mut buf);
+
+                    let packet: &[u8] = bytemuck::cast_slice(&buf);
+                    let _ = socket.send(packet);
+                }
             }
-        }
-    });
+        });
 
-    Ok(stream)
-}
-
-fn wait_for_key(msg: &str) {
-    println!("{}", msg);
-    std::io::stdin().read_line(&mut String::new()).unwrap();
+        Ok((stream, udp_loop))
+    }
 }
 
 pub fn enumerate() -> Result<(), anyhow::Error> {
