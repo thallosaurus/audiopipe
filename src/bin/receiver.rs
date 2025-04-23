@@ -26,7 +26,7 @@ fn main() -> anyhow::Result<()> {
         } else {
             host.default_output_device()
         }
-        .expect("no input device");
+        .expect("no output device");
 
         // parse buffer and channel selector
         let buf_size;
