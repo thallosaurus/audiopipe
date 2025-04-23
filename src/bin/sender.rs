@@ -1,6 +1,9 @@
 use std::{env, net::Ipv4Addr, str::FromStr, sync::mpsc::channel};
 
-use audio_streamer::{enumerate, search_device, search_for_host, sender::{args::SenderCliArgs, tui::run_tui, AudioSender}, DEFAULT_PORT, SENDER_BUFFER_SIZE};
+use audio_streamer::{
+    DEFAULT_PORT, SENDER_BUFFER_SIZE, enumerate, search_device, search_for_host,
+    sender::{AudioSender, args::SenderCliArgs, tui::run_tui},
+};
 use clap::Parser;
 use cpal::{
     Device, Host, StreamConfig,
@@ -28,6 +31,7 @@ fn main() -> anyhow::Result<()> {
             host.default_input_device()
         }
         .expect("no input device");
+        println!("Using device {}", device.name().unwrap_or("Unknown Device".to_string()));
 
         // parse buffer and channel selector
         let buf_size;
@@ -44,7 +48,7 @@ fn main() -> anyhow::Result<()> {
             (_, _) => {
                 buf_size = SENDER_BUFFER_SIZE as u32;
                 device.default_input_config()?.into()
-            },
+            }
         };
 
         dbg!(&config);
@@ -54,7 +58,7 @@ fn main() -> anyhow::Result<()> {
             config,
             Ipv4Addr::from_str(args.target_server.as_str())?,
             DEFAULT_PORT,
-            buf_size
+            buf_size,
         )?;
 
         //wait_for_key("Sending... Press ctrl-c to stop");
