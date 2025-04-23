@@ -16,7 +16,7 @@ use ratatui::{
     widgets::{Block, Paragraph, Widget},
 };
 
-use crate::{CpalStats, UdpStats};
+use super::{CpalStats, UdpStats};
 
 pub fn run_tui(device: &Device, rx: Receiver<UdpStats>, cpal_rx: Receiver<CpalStats>) -> io::Result<()> {
     let mut terminal = ratatui::init();
