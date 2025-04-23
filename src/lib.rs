@@ -19,7 +19,7 @@ use ringbuf::{
 
 const PORT: u16 = 42069;
 const RECEIVER_BUFFER_SIZE: usize = 8192;
-const SENDER_BUFFER_SIZE: usize = 8192;
+const SENDER_BUFFER_SIZE: usize = 1024;
 
 pub mod receiver_tui;
 
@@ -75,12 +75,10 @@ impl AudioReceiver {
 
                         let occupied_buffer = prod.occupied_len();
 
-                        if let Err(ok) = tx.send(UdpStats {
+                        tx.send(UdpStats {
                             received,
                             occupied_buffer,
-                        }) {
-                            return;
-                        }
+                        }).unwrap();
                     }
                     Err(e) => eprintln!("UDP receive error: {:?}", e),
                 }
@@ -96,11 +94,9 @@ impl AudioReceiver {
                     *sample = consumer.try_pop().unwrap_or(Sample::EQUILIBRIUM);
                 }
 
-                if let Err(ok) = cpal_tx.send(CpalStats {
+                cpal_tx.send(CpalStats {
                     requested_sample_length: output.len(),
-                }) {
-                    return;
-                }
+                }).unwrap();
             },
             |err| eprintln!("Stream error: {}", err),
             None,
@@ -164,7 +160,7 @@ impl AudioSender {
         socket: UdpSocket,
     ) -> Result<(cpal::Stream, JoinHandle<()>), anyhow::Error>
     where
-        T: cpal::SizedSample + Send + Pod + 'static,
+        T: cpal::SizedSample + Send + Pod + Default + 'static,
     {
         //let channels = config.channels as usize;
         let buf = HeapRb::<T>::new(SENDER_BUFFER_SIZE);
@@ -173,12 +169,7 @@ impl AudioSender {
         let stream = device.build_input_stream(
             config,
             move |data: &[T], _| {
-                let bytes = unsafe {
-                    std::slice::from_raw_parts(
-                        data.as_ptr() as *const T,
-                        data.len() * std::mem::size_of::<T>(),
-                    )
-                };
+                let bytes = bytemuck::cast_slice(data);
                 prod.push_slice(bytes);
             },
             |err| eprintln!("Stream error: {}", err),
@@ -188,11 +179,12 @@ impl AudioSender {
         let udp_loop = std::thread::spawn(move || {
             loop {
                 if cons.is_full() {
-                    let mut buf = Vec::<T>::new();
+                    let mut buf: Box<[T]> = vec![T::default(); SENDER_BUFFER_SIZE].into_boxed_slice();
 
                     cons.pop_slice(&mut buf);
 
                     let packet: &[u8] = bytemuck::cast_slice(&buf);
+                    //dbg!(packet);
                     let _ = socket.send(packet);
                 }
             }
