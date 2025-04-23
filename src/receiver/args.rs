@@ -23,8 +23,14 @@ pub struct ReceiverCliArgs {
     #[arg(short)]
     pub enumerate: bool,
 
+    /// Show Debug TUI
     #[arg(short)]
-    pub ui: bool
+    pub ui: bool,
+
+    /// Dump received audio to wav file
+    #[cfg(debug_assertions)]
+    #[arg(short)]
+    pub wave_output: bool
 
     // Target IP of the server
     //#[arg(short)]

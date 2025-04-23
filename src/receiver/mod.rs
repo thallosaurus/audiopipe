@@ -1,9 +1,9 @@
 use std::{net::UdpSocket, sync::{mpsc::{self, Receiver}, Arc, Mutex}};
 
-use cpal::{traits::{DeviceTrait, StreamTrait}, Device, Sample, Stream, StreamConfig};
+use cpal::{traits::{DeviceTrait, StreamTrait}, Device, Stream, StreamConfig};
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
 
-use crate::{DEFAULT_PORT, RECEIVER_BUFFER_SIZE};
+use crate::{create_wav_writer, DEFAULT_PORT};
 
 pub mod tui;
 pub mod args;
@@ -27,8 +27,8 @@ impl AudioReceiver {
     pub fn new(
         device: &Device,
         config: StreamConfig,
-        closing_rx: Receiver<bool>,
-        buf_size: u32
+        buf_size: u32,
+        dump_received: bool
     ) -> anyhow::Result<AudioReceiver> {
         //let device = host.default_output_device().expect("no output device available");
         //let config = device.default_output_config()?;
@@ -75,12 +75,22 @@ impl AudioReceiver {
 
         let (cpal_tx, cpal_rx) = mpsc::channel::<CpalStats>();
 
+        let mut debug_sample_writer = create_wav_writer("receiver_dump.wav".to_owned(), 1, 44100, 32, hound::SampleFormat::Float)?;
         let stream = device.build_output_stream(
             &config.into(),
             move |output: &mut [f32], _| {
-                for sample in output.iter_mut() {
-                    *sample = consumer.try_pop().unwrap_or(Sample::EQUILIBRIUM);
+
+                let consumed = consumer.pop_slice(output);
+
+                if dump_received && consumed > 0 {  // Only dump when there also was data
+
+                    #[cfg(debug_assertions)]
+                    for sample in output.iter() {
+                        //*sample = consumer.try_pop().unwrap_or(Sample::EQUILIBRIUM);
+                        debug_sample_writer.write_sample(*sample).unwrap();
+                    }
                 }
+
 
                 cpal_tx.send(CpalStats {
                     requested_sample_length: output.len(),

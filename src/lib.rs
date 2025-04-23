@@ -1,19 +1,81 @@
-use cpal::{
-    traits::{DeviceTrait, HostTrait}, Device, Host
-};
+use std::{fs::File, io::BufWriter};
+
+use cpal::{traits::*, *};
+use hound::WavWriter;
 
 pub const DEFAULT_PORT: u16 = 42069;
-const RECEIVER_BUFFER_SIZE: usize = 8192;
 pub const SENDER_BUFFER_SIZE: usize = 1024;
 
-pub mod sender;
 pub mod receiver;
+pub mod sender;
 
-pub fn enumerate() -> Result<(), anyhow::Error> {
+pub fn enum_new(host: &Host) -> anyhow::Result<()> {
     println!("Supported hosts:\n  {:?}", cpal::ALL_HOSTS);
     let available_hosts = cpal::available_hosts();
     println!("Available hosts:\n  {:?}", available_hosts);
 
+    //let default_in = host.default_input_device().map(|e| e.name().unwrap());
+    //let default_out = host.default_output_device().map(|e| e.name().unwrap());
+
+    println!("Devices:");
+    for device in host.devices()?.into_iter() {
+        
+        println!(
+            " - {:?} (Input)",
+            device.name().unwrap_or("Unknown Device".to_string())
+        );
+        if let Ok(config) = device.supported_input_configs() {
+
+            for supported_config in config.into_iter() {
+                let buf_size = match supported_config.buffer_size() {
+                    SupportedBufferSize::Range { min, max } => format!("{}/{}", min, max),
+                    SupportedBufferSize::Unknown => format!("Unknown"),
+                };
+                
+                println!(
+                    "   - Buffer Min/Max: {}, Channels: {}, Sample Format: {}, Sample Rate: {:?}",
+                    buf_size,
+                    supported_config.channels(),
+                    supported_config.sample_format(),
+                    supported_config.max_sample_rate()
+                )
+            }
+        } else {
+            println!("   <not supported>");
+        }
+        println!("");
+
+        println!(
+            " - {:?} (Output)",
+            device.name().unwrap_or("Unknown Device".to_string())
+        );
+
+        if let Ok(conf) = device.supported_output_configs() {
+            for supported_config in conf.into_iter() {
+                let buf_size = match supported_config.buffer_size() {
+                    SupportedBufferSize::Range { min, max } => format!("{}/{}", min, max),
+                    SupportedBufferSize::Unknown => format!("Unknown"),
+                };
+
+                println!(
+                    "   - Buffer Min/Max: {}, Channels: {}, Sample Format: {}, Sample Rate: {:?}",
+                    buf_size,
+                    supported_config.channels(),
+                    supported_config.sample_format(),
+                    supported_config.max_sample_rate()
+                )
+            }
+        } else {
+            println!("   <not supported>")
+        }
+        println!("");
+    }
+
+    Ok(())
+}
+
+pub fn enumerate() -> Result<(), anyhow::Error> {
+    let available_hosts = cpal::available_hosts();
     for host_id in available_hosts {
         println!("{}", host_id.name());
         let host = cpal::host_from_id(host_id)?;
@@ -79,7 +141,6 @@ pub fn enumerate() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-
 pub fn search_for_host(name: &str) -> anyhow::Result<Host> {
     let host_id = cpal::available_hosts()
         .into_iter()
@@ -91,4 +152,21 @@ pub fn search_for_host(name: &str) -> anyhow::Result<Host> {
 
 pub fn search_device(x: &Device, name: &str) -> bool {
     x.name().map(|y| y == name).unwrap_or(false)
+}
+
+pub fn create_wav_writer(
+    filename: String,
+    channels: u16,
+    sample_rate: u32,
+    bits_per_sample: u16,
+    sample_format: hound::SampleFormat,
+) -> anyhow::Result<WavWriter<BufWriter<File>>> {
+    let spec = hound::WavSpec {
+        channels,
+        sample_rate,
+        bits_per_sample,
+        sample_format,
+    };
+
+    Ok(hound::WavWriter::create(filename, spec)?)
 }

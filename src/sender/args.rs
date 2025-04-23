@@ -25,8 +25,9 @@ pub struct SenderCliArgs {
 
     /// Target IP of the server
     #[arg(short)]
-    pub target_server: String,
+    pub target_server: Option<String>,
 
+    /// Show Debug TUI
     #[arg(short)]
     pub ui: bool
 }
