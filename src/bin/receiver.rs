@@ -42,7 +42,7 @@ fn main() -> anyhow::Result<()> {
             }
             (_, _) => {
                 buf_size = SENDER_BUFFER_SIZE as u32;
-                device.default_input_config()?.into()
+                device.default_output_config()?.into()
             },
         };
 
