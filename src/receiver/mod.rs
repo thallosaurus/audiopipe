@@ -37,7 +37,7 @@ impl AudioReceiver {
 
         let (tx, udp_rx) = mpsc::channel::<UdpStats>();
 
-        let ring = ringbuf::HeapRb::<f32>::new(RECEIVER_BUFFER_SIZE);
+        let ring = ringbuf::HeapRb::<f32>::new(buf_size as usize);
         let (producer, mut consumer) = ring.split();
         let producer = Arc::new(Mutex::new(producer));
 
@@ -46,7 +46,8 @@ impl AudioReceiver {
             let socket = UdpSocket::bind(("0.0.0.0", DEFAULT_PORT)).expect("Failed to bind UDP socket");
             println!("Listening on UDP port {}", DEFAULT_PORT);
 
-            let mut buf = [0u8; RECEIVER_BUFFER_SIZE];
+            //let mut buf = Vec::<u8>::new()
+            let mut buf: Box<[u8]> = vec![0u8; buf_size as usize].into_boxed_slice();
 
             loop {
                 match socket.recv(&mut buf) {
