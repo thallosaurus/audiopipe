@@ -64,7 +64,7 @@ fn main() -> anyhow::Result<()> {
             &device,
             config,
             Ipv4Addr::from_str(target_server.as_str())?,
-            DEFAULT_PORT,
+            args.port.unwrap_or(DEFAULT_PORT),
             buf_size,
         )?;
         

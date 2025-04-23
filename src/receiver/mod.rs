@@ -28,7 +28,8 @@ impl AudioReceiver {
         device: &Device,
         config: StreamConfig,
         buf_size: u32,
-        dump_received: bool
+        dump_received: bool,
+        port: u16
     ) -> anyhow::Result<AudioReceiver> {
         //let device = host.default_output_device().expect("no output device available");
         //let config = device.default_output_config()?;
@@ -43,8 +44,8 @@ impl AudioReceiver {
 
         let producer_clone = Arc::clone(&producer);
         std::thread::spawn(move || {
-            let socket = UdpSocket::bind(("0.0.0.0", DEFAULT_PORT)).expect("Failed to bind UDP socket");
-            println!("Listening on UDP port {}", DEFAULT_PORT);
+            let socket = UdpSocket::bind(("0.0.0.0", port)).expect("Failed to bind UDP socket");
+            println!("Listening on UDP port {}", port);
 
             //let mut buf = Vec::<u8>::new()
             let mut buf: Box<[u8]> = vec![0u8; buf_size as usize].into_boxed_slice();

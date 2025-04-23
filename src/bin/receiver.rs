@@ -1,7 +1,5 @@
 use audio_streamer::{
-    SENDER_BUFFER_SIZE, enum_new, enumerate,
-    receiver::{AudioReceiver, args::ReceiverCliArgs, tui::run_tui},
-    search_device, search_for_host,
+    enum_new, enumerate, receiver::{args::ReceiverCliArgs, tui::run_tui, AudioReceiver}, search_device, search_for_host, DEFAULT_PORT, SENDER_BUFFER_SIZE
 };
 use clap::Parser;
 use cpal::{
@@ -64,7 +62,7 @@ fn main() -> anyhow::Result<()> {
     #[cfg(not(debug_assertions))]
     let wave_output = false;
 
-    let receiver = AudioReceiver::new(&device, config, buf_size, wave_output).unwrap();
+    let receiver = AudioReceiver::new(&device, config, buf_size, wave_output, args.port.unwrap_or(DEFAULT_PORT)).unwrap();
     if args.ui {
         run_tui(&device, receiver.udp_rx, receiver.cpal_rx).unwrap();
     } else {

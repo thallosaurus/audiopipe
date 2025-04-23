@@ -1,9 +1,9 @@
 use clap::Parser;
 
-use crate::{PKG_DESC, PKG_NAME, VERSION};
+use crate::{PKG_NAME, VERSION};
 
 #[derive(Parser, Debug)]
-#[command(version, about = format!("{} receiver (v{})", PKG_NAME, VERSION), long_about = PKG_DESC)]
+#[command(version, about = format!("{} receiver (v{})", PKG_NAME, VERSION), long_about = None)]
 pub struct ReceiverCliArgs {
     /// Name of the Audio Host
     #[arg(short, long)]
@@ -32,7 +32,11 @@ pub struct ReceiverCliArgs {
     /// Dump received audio to wav file
     #[cfg(debug_assertions)]
     #[arg(short)]
-    pub wave_output: bool
+    pub wave_output: bool,
+
+    /// Port to connect to
+    #[arg(short)]
+    pub port: Option<u16>
 
     // Target IP of the server
     //#[arg(short)]

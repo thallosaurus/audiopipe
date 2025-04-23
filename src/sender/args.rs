@@ -1,6 +1,6 @@
 use clap::Parser;
 
-use crate::{PKG_DESC, PKG_NAME, VERSION};
+use crate::{PKG_NAME, VERSION};
 
 #[derive(Parser, Debug)]
 #[command(version, about = format!("{} sender (v{})", PKG_NAME, VERSION), long_about = None)]
@@ -31,5 +31,9 @@ pub struct SenderCliArgs {
 
     /// Show Debug TUI
     #[arg(short)]
-    pub ui: bool
+    pub ui: bool,
+
+    /// Port to listen on
+    #[arg(short)]
+    pub port: Option<u16>,
 }
