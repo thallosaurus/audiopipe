@@ -23,7 +23,7 @@ pub struct CpalStats {
     requested_sample_length: usize,
 }
 
-pub struct AudioSender {
+struct AudioSender {
     _stream: Stream,
     _socket_loop: JoinHandle<()>,
     pub udp_rx: Receiver<UdpStats>,

@@ -1,5 +1,7 @@
+use std::{net::Ipv4Addr, str::FromStr};
+
 use audio_streamer::{
-    enumerate, receiver::{args::ReceiverCliArgs, tui::run_tui, AudioReceiver}, search_device, search_for_host, DEFAULT_PORT, SENDER_BUFFER_SIZE
+    enumerate, receiver::{args::ReceiverCliArgs, tui::run_tui}, search_device, search_for_host, streamer::{self, StreamComponent, Streamer}, DEFAULT_PORT, SENDER_BUFFER_SIZE
 };
 use clap::Parser;
 use cpal::{
@@ -62,9 +64,9 @@ fn main() -> anyhow::Result<()> {
     #[cfg(not(debug_assertions))]
     let wave_output = false;
 
-    let receiver = AudioReceiver::new(&device, config, buf_size, wave_output, args.port.unwrap_or(DEFAULT_PORT)).unwrap();
+    let receiver = Streamer::construct::<f32>(streamer::Direction::Receiver, 42069, Ipv4Addr::from_str("0.0.0.0").expect("Invalid Host Address"), &device, &config, buf_size.try_into().unwrap()).unwrap();
     if args.ui {
-        run_tui(&device, receiver.udp_rx, receiver.cpal_rx).unwrap();
+        run_tui(&device, receiver.net_stats, receiver.cpal_stats).unwrap();
     } else {
         println!("Receiving. Press ctrl+c to exit");
         loop {}

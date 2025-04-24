@@ -12,6 +12,7 @@ pub const PKG_DESC: &str = env!("CARGO_PKG_DESCRIPTION");
 
 pub mod receiver;
 pub mod sender;
+pub mod streamer;
 
 pub fn enumerate(host: &Host) -> anyhow::Result<()> {
     println!("Supported hosts:\n  {:?}", cpal::ALL_HOSTS);

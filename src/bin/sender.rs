@@ -1,14 +1,14 @@
 use std::{net::Ipv4Addr, str::FromStr};
 
 use audio_streamer::{
-    DEFAULT_PORT, SENDER_BUFFER_SIZE, enumerate, search_device, search_for_host,
-    sender::{AudioSender, args::SenderCliArgs, tui::run_tui},
+    enumerate, search_device, search_for_host, sender::{args::SenderCliArgs, tui::run_tui}, streamer::{self, StreamComponent, Streamer}, DEFAULT_PORT, SENDER_BUFFER_SIZE
 };
 use clap::Parser;
 use cpal::{
     StreamConfig,
     traits::{DeviceTrait, HostTrait},
 };
+
 
 fn main() -> anyhow::Result<()> {
     let args = SenderCliArgs::parse();
@@ -60,23 +60,14 @@ fn main() -> anyhow::Result<()> {
     dbg!(&config);
 
     if let Some(target_server) = args.target_server {
-        let _sender = AudioSender::new(
-            &device,
-            config,
-            Ipv4Addr::from_str(target_server.as_str())?,
-            args.port.unwrap_or(DEFAULT_PORT),
-            buf_size,
-        )?;
+        let sender = Streamer::construct::<f32>(streamer::Direction::Sender, 42069, Ipv4Addr::from_str(&target_server).expect("Invalid Host Address"), &device, &config, buf_size.try_into().unwrap()).unwrap();
         
-        //wait_for_key("Sending... Press ctrl-c to stop");
         if args.ui {
-            run_tui(&device, _sender.udp_rx, _sender.cpal_rx).unwrap();
+            run_tui(&device, sender.net_stats, sender.cpal_stats).unwrap();
         } else {
             println!("Sending... Press ctrl-c to stop");
             loop {}
         }
-    } else {
-        println!("Invalid Host Address");
     }
 
     Ok(())

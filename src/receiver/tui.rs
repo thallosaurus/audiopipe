@@ -16,7 +16,7 @@ use ratatui::{
     widgets::{Block, Paragraph, Widget},
 };
 
-use super::{CpalStats, UdpStats};
+use crate::streamer::{CpalStats, UdpStats};
 
 pub fn run_tui(device: &Device, rx: Receiver<UdpStats>, cpal_rx: Receiver<CpalStats>) -> io::Result<()> {
     let mut terminal = ratatui::init();
@@ -122,7 +122,7 @@ impl Widget for &App {
         if let Ok(stats) = udp_stats {
             //counter_text = format!("Occupied Size: {}, Received Samples: {}", stats.occupied_buffer, stats.received);
             occupied = stats.occupied_buffer;
-            received = stats.received;
+            received = stats.received.unwrap_or(0);
 
         }
 

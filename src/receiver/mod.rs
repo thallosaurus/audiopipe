@@ -25,7 +25,7 @@ pub struct CpalStats {
     consumed: usize,
 }
 
-pub struct AudioReceiver {
+struct AudioReceiver {
     _stream: Stream,
     _socket_loop: JoinHandle<()>,
     pub udp_rx: Receiver<UdpStats>,
