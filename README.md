@@ -1,5 +1,5 @@
-# audio-sender
-A simple app that sends audio over the network
+# uncomplicated-audio-transfer
+A simple app that sends audio over the network with the aim of realtime, low-latency performance
 
 ## Usage
 

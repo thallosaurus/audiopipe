@@ -1,4 +1,4 @@
-use std::{net::UdpSocket, sync::{mpsc::{self, Receiver, Sender}, Arc, Mutex}, thread::JoinHandle};
+use std::{net::UdpSocket, sync::mpsc::{self, Receiver, Sender}, thread::JoinHandle};
 
 use bytemuck::Pod;
 use cpal::{traits::{DeviceTrait, StreamTrait}, Device, Stream, StreamConfig};
@@ -82,13 +82,7 @@ impl AudioReceiver {
         let stream = device.build_output_stream(
             config.into(),
             move |output: &mut [T], _| {
-
-                //let mut raw_buf: Box<[T]> = vec![T::default(); buf_size as usize].into_boxed_slice();
-
-                //let consumed = consumer.pop_slice(&mut raw_buf);
                 let consumed = consumer.pop_slice(output);
-
-                //let bm: &[f32] = bytemuck::cast_slice(&raw_buf);
 
                 if consumed > 0 {  // Only dump when there also was data
 
@@ -111,11 +105,6 @@ impl AudioReceiver {
         )?;
 
         let udp_loop = std::thread::spawn(move || {
-
-
-            //let mut buf = Vec::<u8>::new()
-
-            //TODO DIRTY FIX
             let t_size = size_of::<T>();
 
             let mut raw_buf: Box<[u8]> = vec![0u8; (buf_size as usize) * t_size].into_boxed_slice();
