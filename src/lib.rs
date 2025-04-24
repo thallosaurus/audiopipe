@@ -10,6 +10,7 @@ pub const PKG_NAME: &str = env!("CARGO_PKG_NAME");
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const PKG_DESC: &str = env!("CARGO_PKG_DESCRIPTION");
 
+/// 
 pub mod streamer;
 pub mod tui;
 pub mod args;
@@ -18,9 +19,6 @@ pub fn enumerate(host: &Host) -> anyhow::Result<()> {
     println!("Supported hosts:\n  {:?}", cpal::ALL_HOSTS);
     let available_hosts = cpal::available_hosts();
     println!("Available hosts:\n  {:?}", available_hosts);
-
-    //let default_in = host.default_input_device().map(|e| e.name().unwrap());
-    //let default_out = host.default_output_device().map(|e| e.name().unwrap());
 
     println!("Devices:");
     for device in host.devices()?.into_iter() {

@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use cpal::{Device, StreamConfig, traits::DeviceTrait};
+use cpal::{Device, traits::DeviceTrait};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     DefaultTerminal, Frame,
@@ -18,7 +18,7 @@ use ratatui::{
 
 use crate::streamer::{CpalStats, Direction, UdpStats};
 
-pub fn run_tui(
+pub fn tui(
     direction: Direction,
     device_config: &Device,
     net_stats: Receiver<UdpStats>,
