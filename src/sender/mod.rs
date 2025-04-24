@@ -87,7 +87,7 @@ impl AudioSender {
         T: cpal::SizedSample + Send + Pod + Default + 'static,
     {
         //let channels = config.channels as usize;
-        let buf = HeapRb::<T>::new(buf_size as usize);
+        let buf = HeapRb::<T>::new((buf_size as usize) * 2);
         let (mut prod, mut cons) = buf.split();
 
         let stream = device.build_input_stream(
@@ -95,6 +95,10 @@ impl AudioSender {
             move |data: &[T], _| {
                 let bytes = bytemuck::cast_slice(data);
                 prod.push_slice(bytes);
+
+                /*for b in bytes.iter() {
+                    //prod.try_push(*b);
+                }*/
 
                 cpal_tx.send(CpalStats {
                     requested_sample_length: data.len(),
