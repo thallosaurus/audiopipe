@@ -1,6 +1,6 @@
 use std::{net::Ipv4Addr, str::FromStr};
 
-use audio_streamer::{
+use uastreamer::{
     args::ReceiverCliArgs, enumerate, search_device, search_for_host, streamer::{self, StreamComponent, Streamer}, tui::tui, DEFAULT_PORT, SENDER_BUFFER_SIZE
 };
 use clap::Parser;
@@ -9,6 +9,7 @@ use cpal::{
     traits::{DeviceTrait, HostTrait},
 };
 
+/// Main entrypoint for the receiver
 fn main() -> anyhow::Result<()> {
     let args = ReceiverCliArgs::parse();
 
@@ -20,7 +21,7 @@ fn main() -> anyhow::Result<()> {
     };
 
     if args.enumerate {
-        enumerate(&host).unwrap();
+        enumerate(streamer::Direction::Receiver, &host).unwrap();
         return Ok(())
     }
 
