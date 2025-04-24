@@ -3,7 +3,7 @@ use std::{net::UdpSocket, sync::{mpsc::{self, Receiver}, Arc, Mutex}};
 use cpal::{traits::{DeviceTrait, StreamTrait}, Device, Stream, StreamConfig};
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
 
-use crate::{create_wav_writer, DEFAULT_PORT};
+use crate::create_wav_writer;
 
 pub mod tui;
 pub mod args;

@@ -1,5 +1,5 @@
 use audio_streamer::{
-    enum_new, enumerate, receiver::{args::ReceiverCliArgs, tui::run_tui, AudioReceiver}, search_device, search_for_host, DEFAULT_PORT, SENDER_BUFFER_SIZE
+    enum_new, receiver::{args::ReceiverCliArgs, tui::run_tui, AudioReceiver}, search_device, search_for_host, DEFAULT_PORT, SENDER_BUFFER_SIZE
 };
 use clap::Parser;
 use cpal::{

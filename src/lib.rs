@@ -174,3 +174,14 @@ pub fn create_wav_writer(
 
     Ok(hound::WavWriter::create(filename, spec)?)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_transfer() {
+
+        
+    }
+}
