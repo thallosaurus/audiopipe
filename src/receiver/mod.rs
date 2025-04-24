@@ -47,7 +47,9 @@ impl AudioReceiver {
             println!("Listening on UDP port {}", port);
 
             //let mut buf = Vec::<u8>::new()
-            let mut buf: Box<[u8]> = vec![0u8; buf_size as usize].into_boxed_slice();
+
+            ///TODO DIRTY FIX
+            let mut buf: Box<[u8]> = vec![0u8; (buf_size * 4) as usize].into_boxed_slice();
 
             loop {
                 match socket.recv(&mut buf) {
@@ -87,7 +89,9 @@ impl AudioReceiver {
                     #[cfg(debug_assertions)]
                     for sample in output.iter() {
                         //*sample = consumer.try_pop().unwrap_or(Sample::EQUILIBRIUM);
-                        debug_sample_writer.write_sample(*sample).unwrap();
+                        if dump_received {
+                            debug_sample_writer.write_sample(*sample).unwrap();
+                        }
                     }
                 }
 

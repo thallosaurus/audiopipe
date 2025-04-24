@@ -111,12 +111,12 @@ impl Widget for &App {
         let udp_stats = udp_rx
             .as_ref()
             .expect("no receiver set")
-            .recv_timeout(Duration::from_millis(500));
+            .recv_timeout(Duration::from_millis(50));
 
         let cpal_stats = cpal_rx
             .as_ref()
             .expect("no receiver set")
-            .recv_timeout(Duration::from_millis(500));
+            .recv_timeout(Duration::from_millis(50));
 
         let mut occupied = 0;
         let mut received = 0;
@@ -132,9 +132,9 @@ impl Widget for &App {
         }
 
         let counter_text = vec![
-            Line::from(format!("Output Device Name: {}", self.device_name)),
+            Line::from(format!("Input Device Name: {}", self.device_name)),
             Line::from(format!("Occupied Size: {}", occupied)),
-            Line::from(format!("Received Samples: {}", received)),
+            Line::from(format!("Sent Samples: {}", received)),
             Line::from(format!("Requested Samples: {}", requested_sample_length)),
         ];
 
