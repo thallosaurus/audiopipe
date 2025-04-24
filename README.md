@@ -1,11 +1,11 @@
-# uncomplicated-audio-transfer
+# uncomplicated-audio-streamer
 A simple app that sends audio over the network with the aim of realtime, low-latency performance
 
 ## Usage
 
 ### Sender
 ```
-audio-streamer sender (v0.1.0)
+uastreamer sender (v0.1.0)
 
 Usage: sender [OPTIONS]
 
@@ -24,7 +24,7 @@ Options:
 
 ### Receiver
 ```
-audio-streamer receiver (v0.1.0)
+uastreamer receiver (v0.1.0)
 
 Usage: receiver [OPTIONS]
 

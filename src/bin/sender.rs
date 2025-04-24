@@ -1,8 +1,7 @@
 use std::{net::Ipv4Addr, str::FromStr};
 
-use audio_streamer::{
-    DEFAULT_PORT, SENDER_BUFFER_SIZE, enumerate, search_device, search_for_host,
-    sender::{AudioSender, args::SenderCliArgs, tui::run_tui},
+use uastreamer::{
+    args::SenderCliArgs, enumerate, search_device, search_for_host, streamer::{self, StreamComponent, Streamer}, tui::tui, DEFAULT_PORT, SENDER_BUFFER_SIZE
 };
 use clap::Parser;
 use cpal::{
@@ -10,6 +9,7 @@ use cpal::{
     traits::{DeviceTrait, HostTrait},
 };
 
+/// Main entrypoint for the sender
 fn main() -> anyhow::Result<()> {
     let args = SenderCliArgs::parse();
     // parse audio system host name
@@ -21,7 +21,6 @@ fn main() -> anyhow::Result<()> {
 
     // parse device selector
     let device = if let Some(device) = args.device {
-        //search_for_input_device(host, &device)?
         host.input_devices()?.find(|x| search_device(x, &device))
     } else {
         host.default_input_device()
@@ -29,7 +28,7 @@ fn main() -> anyhow::Result<()> {
     .expect("no input device");
 
     if args.enumerate {
-        enumerate(&host).unwrap();
+        enumerate(streamer::Direction::Sender, &host).unwrap();
         return Ok(())
     }
 
@@ -60,23 +59,13 @@ fn main() -> anyhow::Result<()> {
     dbg!(&config);
 
     if let Some(target_server) = args.target_server {
-        let _sender = AudioSender::new(
-            &device,
-            config,
-            Ipv4Addr::from_str(target_server.as_str())?,
-            args.port.unwrap_or(DEFAULT_PORT),
-            buf_size,
-        )?;
-        
-        //wait_for_key("Sending... Press ctrl-c to stop");
+        let sender = Streamer::construct::<f32>(streamer::Direction::Sender, args.port.unwrap_or(DEFAULT_PORT), Ipv4Addr::from_str(&target_server).expect("Invalid Host Address"), &device, &config, buf_size.try_into().unwrap()).unwrap();
         if args.ui {
-            run_tui(&device, _sender.udp_rx, _sender.cpal_rx).unwrap();
+            tui(streamer::Direction::Sender, &device, sender.net_stats, sender.cpal_stats).unwrap();
         } else {
             println!("Sending... Press ctrl-c to stop");
             loop {}
         }
-    } else {
-        println!("Invalid Host Address");
     }
 
     Ok(())
