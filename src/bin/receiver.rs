@@ -1,7 +1,7 @@
 use std::{net::Ipv4Addr, str::FromStr};
 
 use audio_streamer::{
-    enumerate, receiver::{args::ReceiverCliArgs, tui::run_tui}, search_device, search_for_host, streamer::{self, StreamComponent, Streamer}, DEFAULT_PORT, SENDER_BUFFER_SIZE
+    args::ReceiverCliArgs, enumerate, search_device, search_for_host, streamer::{self, StreamComponent, Streamer}, tui::run_tui, DEFAULT_PORT, SENDER_BUFFER_SIZE
 };
 use clap::Parser;
 use cpal::{
@@ -10,13 +10,8 @@ use cpal::{
 };
 
 fn main() -> anyhow::Result<()> {
-    //enumerate().unwrap();
-
     let args = ReceiverCliArgs::parse();
-    //if args.enumerate {
-    //enumerate().unwrap();
-    //    return Ok(());
-    //} else {
+
     // parse audio system host name
     let host = if let Some(host) = args.audio_host {
         search_for_host(&host)?
@@ -66,7 +61,7 @@ fn main() -> anyhow::Result<()> {
 
     let receiver = Streamer::construct::<f32>(streamer::Direction::Receiver, 42069, Ipv4Addr::from_str("0.0.0.0").expect("Invalid Host Address"), &device, &config, buf_size.try_into().unwrap()).unwrap();
     if args.ui {
-        run_tui(&device, receiver.net_stats, receiver.cpal_stats).unwrap();
+        run_tui(streamer::Direction::Receiver, &device, receiver.net_stats, receiver.cpal_stats).unwrap();
     } else {
         println!("Receiving. Press ctrl+c to exit");
         loop {}

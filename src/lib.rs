@@ -10,9 +10,9 @@ pub const PKG_NAME: &str = env!("CARGO_PKG_NAME");
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const PKG_DESC: &str = env!("CARGO_PKG_DESCRIPTION");
 
-pub mod receiver;
-pub mod sender;
 pub mod streamer;
+pub mod tui;
+pub mod args;
 
 pub fn enumerate(host: &Host) -> anyhow::Result<()> {
     println!("Supported hosts:\n  {:?}", cpal::ALL_HOSTS);
