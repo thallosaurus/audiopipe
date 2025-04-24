@@ -1,7 +1,7 @@
 use std::{net::Ipv4Addr, str::FromStr};
 
 use audio_streamer::{
-    DEFAULT_PORT, SENDER_BUFFER_SIZE, enum_new, search_device, search_for_host,
+    DEFAULT_PORT, SENDER_BUFFER_SIZE, enumerate, search_device, search_for_host,
     sender::{AudioSender, args::SenderCliArgs, tui::run_tui},
 };
 use clap::Parser;
@@ -29,7 +29,7 @@ fn main() -> anyhow::Result<()> {
     .expect("no input device");
 
     if args.enumerate {
-        enum_new(&host).unwrap();
+        enumerate(&host).unwrap();
         return Ok(())
     }
 

@@ -16,6 +16,7 @@ pub struct UdpStats {
 
 pub struct CpalStats {
     requested_sample_length: usize,
+    consumed: usize,
 }
 
 pub struct AudioReceiver {
@@ -33,19 +34,10 @@ impl AudioReceiver {
         dump_received: bool,
         port: u16
     ) -> anyhow::Result<AudioReceiver> {
-        //let device = host.default_output_device().expect("no output device available");
-        //let config = device.default_output_config()?;
-        //println!("Sample format: {:?}", config.sample_format());
-
         let (udp_tx, udp_rx) = mpsc::channel::<UdpStats>();
 
         let socket = UdpSocket::bind(("0.0.0.0", port)).expect("Failed to bind UDP socket");
-        println!("Listening on UDP port {}", port);
-        
-        //let producer = Arc::new(Mutex::new(producer));
-
-        //let producer_clone = Arc::clone(&producer);
-        
+        println!("Listening on UDP port {}", port);        
 
         let (cpal_tx, cpal_rx) = mpsc::channel::<CpalStats>();
 
@@ -84,7 +76,7 @@ impl AudioReceiver {
             move |output: &mut [T], _| {
                 let consumed = consumer.pop_slice(output);
 
-                if consumed > 0 {  // Only dump when there also was data
+                //if consumed > 0 {  // Only dump when there also was data
 
                     for sample in output.iter() {
                         //*sample = consumer.try_pop().unwrap_or(Sample::EQUILIBRIUM);
@@ -93,11 +85,12 @@ impl AudioReceiver {
                             debug_sample_writer.write_sample(*sample).unwrap();
                         }
                     }
-                }
+                //}
 
 
                 cpal_tx.send(CpalStats {
                     requested_sample_length: output.len(),
+                    consumed,
                 }).unwrap();
             },
             |err| eprintln!("Stream error: {}", err),
