@@ -1,5 +1,6 @@
-use std::{net::UdpSocket, sync::{mpsc::{self, Receiver}, Arc, Mutex}};
+use std::{net::UdpSocket, sync::{mpsc::{self, Receiver, Sender}, Arc, Mutex}, thread::JoinHandle};
 
+use bytemuck::Pod;
 use cpal::{traits::{DeviceTrait, StreamTrait}, Device, Stream, StreamConfig};
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
 
@@ -19,6 +20,7 @@ pub struct CpalStats {
 
 pub struct AudioReceiver {
     _stream: Stream,
+    _socket_loop: JoinHandle<()>,
     pub udp_rx: Receiver<UdpStats>,
     pub cpal_rx: Receiver<CpalStats>,
 }
@@ -35,60 +37,64 @@ impl AudioReceiver {
         //let config = device.default_output_config()?;
         //println!("Sample format: {:?}", config.sample_format());
 
-        let (tx, udp_rx) = mpsc::channel::<UdpStats>();
+        let (udp_tx, udp_rx) = mpsc::channel::<UdpStats>();
 
-        let ring = ringbuf::HeapRb::<f32>::new(buf_size as usize);
-        let (producer, mut consumer) = ring.split();
-        let producer = Arc::new(Mutex::new(producer));
+        let socket = UdpSocket::bind(("0.0.0.0", port)).expect("Failed to bind UDP socket");
+        println!("Listening on UDP port {}", port);
+        
+        //let producer = Arc::new(Mutex::new(producer));
 
-        let producer_clone = Arc::clone(&producer);
-        std::thread::spawn(move || {
-            let socket = UdpSocket::bind(("0.0.0.0", port)).expect("Failed to bind UDP socket");
-            println!("Listening on UDP port {}", port);
-
-            //let mut buf = Vec::<u8>::new()
-
-            ///TODO DIRTY FIX
-            let mut buf: Box<[u8]> = vec![0u8; (buf_size * 4) as usize].into_boxed_slice();
-
-            loop {
-                match socket.recv(&mut buf) {
-                    Ok(received) => {
-                        let float_samples: &[f32] = bytemuck::cast_slice(&buf);
-
-                        let mut prod = producer_clone.lock().unwrap();
-
-                        for &sample in float_samples {
-                            // TODO implement fell-behind logic here
-                            let _ = prod.try_push(sample);
-                        }
-
-                        let occupied_buffer = prod.occupied_len();
-
-                        tx.send(UdpStats {
-                            received,
-                            occupied_buffer,
-                        }).unwrap();
-                    }
-                    Err(e) => eprintln!("UDP receive error: {:?}", e),
-                }
-            }
-        });
+        //let producer_clone = Arc::clone(&producer);
+        
 
         let (cpal_tx, cpal_rx) = mpsc::channel::<CpalStats>();
 
-        let mut debug_sample_writer = create_wav_writer("receiver_dump.wav".to_owned(), 1, 44100, 32, hound::SampleFormat::Float)?;
-        let stream = device.build_output_stream(
-            &config.into(),
-            move |output: &mut [f32], _| {
+        let (stream, socket_loop) = Self::build_stream::<f32>(&device, &config.into(), socket, cpal_tx, udp_tx, buf_size, dump_received)?;
 
+        stream.play()?;
+
+        Ok(AudioReceiver {
+            _stream: stream,
+            _socket_loop: socket_loop,
+            udp_rx,
+            cpal_rx,
+        })
+    }
+
+    pub fn build_stream<T>(
+        device: &cpal::Device,
+        config: &cpal::StreamConfig,
+        socket: UdpSocket,
+        cpal_tx: Sender<CpalStats>,
+        udp_tx: Sender<UdpStats>,
+        buf_size: u32,
+        dump_received: bool
+    ) -> Result<(cpal::Stream, JoinHandle<()>), anyhow::Error> 
+    where 
+        T: cpal::SizedSample + Send + Pod + Default + hound::Sample + 'static,
+    {
+        let ring = ringbuf::HeapRb::<T>::new(buf_size as usize);
+        let (mut producer, mut consumer) = ring.split();
+
+        #[cfg(debug_assertions)]
+        let mut debug_sample_writer = create_wav_writer("receiver_dump.wav".to_owned(), 1, 44100, 32, hound::SampleFormat::Float)?;
+
+        let stream = device.build_output_stream(
+            config.into(),
+            move |output: &mut [T], _| {
+
+                //let mut raw_buf: Box<[T]> = vec![T::default(); buf_size as usize].into_boxed_slice();
+
+                //let consumed = consumer.pop_slice(&mut raw_buf);
                 let consumed = consumer.pop_slice(output);
 
-                if dump_received && consumed > 0 {  // Only dump when there also was data
+                //let bm: &[f32] = bytemuck::cast_slice(&raw_buf);
 
-                    #[cfg(debug_assertions)]
+                if consumed > 0 {  // Only dump when there also was data
+
                     for sample in output.iter() {
                         //*sample = consumer.try_pop().unwrap_or(Sample::EQUILIBRIUM);
+                        #[cfg(debug_assertions)]
                         if dump_received {
                             debug_sample_writer.write_sample(*sample).unwrap();
                         }
@@ -104,12 +110,40 @@ impl AudioReceiver {
             None,
         )?;
 
-        stream.play()?;
+        let udp_loop = std::thread::spawn(move || {
 
-        Ok(AudioReceiver {
-            _stream: stream,
-            udp_rx,
-            cpal_rx,
-        })
+
+            //let mut buf = Vec::<u8>::new()
+
+            //TODO DIRTY FIX
+            let t_size = size_of::<T>();
+
+            let mut raw_buf: Box<[u8]> = vec![0u8; (buf_size as usize) * t_size].into_boxed_slice();
+
+            loop {
+                match socket.recv(&mut raw_buf) {
+                    Ok(received) => {
+                        let float_samples: &[T] = bytemuck::cast_slice(&raw_buf);
+
+                        //let mut prod = producer_clone.lock().unwrap();
+
+                        for &sample in float_samples {
+                            // TODO implement fell-behind logic here
+                            let _ = producer.try_push(sample);
+                        }
+
+                        let occupied_buffer = producer.occupied_len();
+
+                        udp_tx.send(UdpStats {
+                            received,
+                            occupied_buffer,
+                        }).unwrap();
+                    }
+                    Err(e) => eprintln!("UDP receive error: {:?}", e),
+                }
+            }
+        });
+
+        Ok((stream, udp_loop))
     }
 }
