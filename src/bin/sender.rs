@@ -41,19 +41,21 @@ fn main() -> anyhow::Result<()> {
         device.name().unwrap_or("Unknown Device".to_string())
     );
 
+    let default_config = device.default_input_config()?;
+
     // parse buffer and channel selector
     let buf_size;
-    let config = match (args.channel, args.buffer_size) {
-        (Some(channel), Some(buffer_size)) => {
+    let config = match args.buffer_size {
+        Some(buffer_size) => {
             buf_size = buffer_size;
 
             StreamConfig {
-                channels: channel,
+                channels: default_config.channels(),
                 sample_rate: cpal::SampleRate(44100),
                 buffer_size: cpal::BufferSize::Fixed(buffer_size),
             }
         }
-        (_, _) => {
+        _ => {
             buf_size = SENDER_BUFFER_SIZE as u32;
             device.default_input_config()?.into()
         }

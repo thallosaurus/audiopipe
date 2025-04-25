@@ -39,6 +39,8 @@ pub struct ReceiverCliArgs {
     pub port: Option<u16>, // Target IP of the server
                            //#[arg(short)]
                            //pub target_server: String,
+
+    pub stereo: bool,
 }
 
 #[derive(Parser, Debug)]
@@ -80,4 +82,7 @@ pub struct SenderCliArgs {
     #[cfg(debug_assertions)]
     #[arg(short)]
     pub wave_output: bool,
+    
+    #[arg(short)]
+    pub stereo: bool,
 }

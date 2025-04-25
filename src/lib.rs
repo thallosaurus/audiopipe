@@ -28,6 +28,8 @@ pub mod tui;
 /// Holds everything needed for command line argument parsing
 pub mod args;
 
+pub mod splitter;
+
 /// Enumerate all available devices on the system
 pub fn enumerate(direction: Direction, host: &Host) -> anyhow::Result<()> {
     println!("Supported hosts:\n  {:?}", cpal::ALL_HOSTS);
@@ -135,6 +137,5 @@ mod tests {
     #[test]
     fn test_transfer() {
 
-        
     }
 }

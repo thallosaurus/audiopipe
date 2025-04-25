@@ -12,7 +12,7 @@ use std::{
 
 use bytemuck::Pod;
 use cpal::{
-    InputCallbackInfo, OutputCallbackInfo, Sample, Stream,
+    ChannelCount, InputCallbackInfo, OutputCallbackInfo, Sample, Stream,
     traits::{DeviceTrait, StreamTrait},
 };
 use hound::WavWriter;
@@ -21,7 +21,7 @@ use ringbuf::{
     traits::{Consumer, Observer, Producer, Split},
 };
 
-use crate::create_wav_writer;
+use crate::{create_wav_writer, splitter::ChannelSplitter};
 
 /// Stats which get sent after each UDP Event
 #[derive(Default)]
@@ -74,6 +74,7 @@ pub trait StreamComponent {
         data: &[T],
         info: &InputCallbackInfo,
         output: &mut HeapProd<T>,
+        channel_count: ChannelCount,
         writer: &mut Option<WavWriter<BufWriter<File>>>,
         stats: Arc<Sender<CpalStats>>,
         send_stats: bool,
@@ -83,15 +84,25 @@ pub trait StreamComponent {
 
         let mut consumed = 0;
 
+        let temp_selected_channels = vec![0, 1]; // TODO store this somewhere on the struct
+
+        let splitter = ChannelSplitter::new(data, temp_selected_channels, channel_count);
+
         // Iterate through the input buffer and save data
         // TODO NOTE: The size of the slice is buffer_size * channelCount,
         // so you have to slice the data somehow
-        for sample in data.iter() {
-            output.try_push(*sample).unwrap();
+        for s in splitter {
+            if s.on_selected_channel {
+                if !cfg!(test) {
+                    output.try_push(*s.sample).unwrap();
+                } else {
+                    output.try_push(Sample::EQUILIBRIUM).unwrap();
+                }
+            }
             // If the program runs in debug mode, the debug wav writer becomes available
             #[cfg(debug_assertions)]
             if let Some(writer) = writer {
-                writer.write_sample(*sample).unwrap();
+                writer.write_sample(*s.sample).unwrap();
             }
 
             consumed += 1;
@@ -117,16 +128,21 @@ pub trait StreamComponent {
         output: &mut [T],
         info: &OutputCallbackInfo,
         input: &mut HeapCons<T>,
+        channel_count: ChannelCount,
         writer: &mut Option<WavWriter<BufWriter<File>>>,
         stats: Arc<Sender<CpalStats>>,
         send_stats: bool,
     ) -> usize {
         let mut consumed = 0;
-
         // Pops the oldest element from the front and writes it to the sound buffer
         // consuming only the bytes needed
         for sample in output.iter_mut() {
-            *sample = input.try_pop().unwrap_or(Sample::EQUILIBRIUM);
+            if !cfg!(test) {
+                *sample = input.try_pop().unwrap_or(Sample::EQUILIBRIUM);
+            } else {
+                // Dont write to the speaker while running in test mode...
+                _ = input.try_pop().unwrap_or(Sample::EQUILIBRIUM);
+            }
 
             // If the program runs in debug mode, the debug wav writer becomes available
             #[cfg(debug_assertions)]
@@ -256,6 +272,21 @@ pub trait StreamComponent {
         //TODO DIRTY
         self.get_bufer_size() * 4
     }
+
+    /// CPAL interleaves the sound data,
+    /// For example for two channels (L+R): [L,R,L,R,L,R,...]
+    fn split_stream<
+        T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static,
+    >(
+        channel_count: ChannelCount,
+        selected_channels: &[u8],
+        data: &[T],
+    ) {
+        let mut n_channel_count = 0;
+        for sample in data.iter() {
+            n_channel_count += 1 % channel_count;
+        }
+    }
 }
 
 /// Struct that holds the Streamer.
@@ -339,6 +370,7 @@ impl StreamComponent for Streamer {
                 #[cfg(not(debug_assertions))]
                 let mut writer = None;
 
+                let channel_count = config.channels.clone();
                 let cpal_tx = cpal_arc.clone();
                 (
                     device.build_input_stream(
@@ -348,6 +380,7 @@ impl StreamComponent for Streamer {
                                 data,
                                 c,
                                 &mut prod,
+                                channel_count,
                                 &mut writer,
                                 cpal_tx.clone(),
                                 send_stats,
@@ -377,7 +410,7 @@ impl StreamComponent for Streamer {
                 let mut writer = None;
 
                 let cpal_tx = cpal_arc.clone();
-
+                let channel_count = config.channels.clone();
                 (
                     device.build_output_stream(
                         config.into(),
@@ -386,6 +419,7 @@ impl StreamComponent for Streamer {
                                 output,
                                 info,
                                 &mut cons,
+                                channel_count,
                                 &mut writer,
                                 cpal_tx.clone(),
                                 send_stats,
