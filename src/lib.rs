@@ -28,6 +28,7 @@ pub mod tui;
 /// Holds everything needed for command line argument parsing
 pub mod args;
 
+/// Holds everything related to the audio buffer splitter
 pub mod splitter;
 
 /// Enumerate all available devices on the system

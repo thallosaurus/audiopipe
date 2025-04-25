@@ -52,6 +52,14 @@ pub enum Direction {
     Receiver,
 }
 
+pub struct StreamerConfig {
+    stream_config: cpal::StreamConfig,
+    buffer_size: usize,
+    channel_count: ChannelCount,
+    send_network_stats: bool,
+    send_cpal_stats: bool,
+}
+
 /// Trait that defines the sender/receiver adapter.
 ///
 /// The Sender Adapter simply copies the input from the specified device to a ringbuffer and sends it over the network
@@ -272,21 +280,6 @@ pub trait StreamComponent {
         //TODO DIRTY
         self.get_bufer_size() * 4
     }
-
-    /// CPAL interleaves the sound data,
-    /// For example for two channels (L+R): [L,R,L,R,L,R,...]
-    fn split_stream<
-        T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static,
-    >(
-        channel_count: ChannelCount,
-        selected_channels: &[u8],
-        data: &[T],
-    ) {
-        let mut n_channel_count = 0;
-        for sample in data.iter() {
-            n_channel_count += 1 % channel_count;
-        }
-    }
 }
 
 /// Struct that holds the Streamer.
@@ -353,6 +346,7 @@ impl StreamComponent for Streamer {
 
         let cpal_arc = Arc::new(cpal_tx);
 
+        // Start CPAL Stream and also start UDP Thread
         let (_stream, _udp_loop) = match direction {
             Direction::Sender => {
                 let socket = UdpSocket::bind("0.0.0.0:0")?;
@@ -380,6 +374,9 @@ impl StreamComponent for Streamer {
                                 data,
                                 c,
                                 &mut prod,
+
+                                // It is neccessary to only hand over the specific properties
+                                // or otherwise it will complain
                                 channel_count,
                                 &mut writer,
                                 cpal_tx.clone(),

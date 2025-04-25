@@ -5,6 +5,7 @@ use cpal::ChannelCount;
 
 /// Special Iterator over the CPAL Buffer, which returns additional infos about the sample.
 /// Is used to work with the interleaved samples
+/// For example for two channels (L+R): [L,R,L,R,L,R,...] and so on
 /// See [SplitChannelSample]
 #[derive(Default)]
 pub struct ChannelSplitter<
@@ -20,6 +21,7 @@ pub struct ChannelSplitter<
 impl<'a, T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static>
     ChannelSplitter<'a, T>
 {
+    /// Constructs a new, sane ChannelSplitter
     pub fn new(data: &'a [T], selected_channels: Vec<usize>, channel_count: ChannelCount) -> Self {
         ChannelSplitter {
             data,
@@ -62,6 +64,16 @@ impl<'a, T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + '
             None
         }
     }
+}
+
+pub struct ChannelMerger<
+    'a,
+    T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static,
+> {
+    data: &'a mut [T],
+    selected_channels: Vec<usize>,
+    channel_count: ChannelCount,
+    index: usize,
 }
 
 #[cfg(test)]
