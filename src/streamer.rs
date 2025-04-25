@@ -82,7 +82,7 @@ pub trait StreamComponent {
         data: &[T],
         info: &InputCallbackInfo,
         output: &mut HeapProd<T>,
-        //channel_count: ChannelCount,
+        channel_count: ChannelCount,
         writer: &mut Option<WavWriter<BufWriter<File>>>,
         stats: Arc<Sender<CpalStats>>,
         send_stats: bool,
@@ -136,7 +136,7 @@ pub trait StreamComponent {
         output: &mut [T],
         info: &OutputCallbackInfo,
         input: &mut HeapCons<T>,
-        //channel_count: ChannelCount,
+        channel_count: ChannelCount,
         writer: &mut Option<WavWriter<BufWriter<File>>>,
         stats: Arc<Sender<CpalStats>>,
         send_stats: bool,
@@ -364,7 +364,7 @@ impl StreamComponent for Streamer {
                 #[cfg(not(debug_assertions))]
                 let mut writer = None;
 
-                //let channel_count = config.channels.clone();
+                let channel_count = config.channels.clone();
                 let cpal_tx = cpal_arc.clone();
                 (
                     device.build_input_stream(
@@ -377,7 +377,7 @@ impl StreamComponent for Streamer {
 
                                 // It is neccessary to only hand over the specific properties
                                 // or otherwise it will complain
-                                //channel_count,
+                                channel_count,
                                 &mut writer,
                                 cpal_tx.clone(),
                                 send_stats,
@@ -416,7 +416,7 @@ impl StreamComponent for Streamer {
                                 output,
                                 info,
                                 &mut cons,
-                                //channel_count,
+                                channel_count,
                                 &mut writer,
                                 cpal_tx.clone(),
                                 send_stats,
