@@ -1,12 +1,16 @@
 use std::{net::Ipv4Addr, str::FromStr};
 
-use uastreamer::{
-    args::SenderCliArgs, enumerate, search_device, search_for_host, streamer::{self, StreamComponent, Streamer}, tui::tui, DEFAULT_PORT, SENDER_BUFFER_SIZE
-};
 use clap::Parser;
 use cpal::{
     StreamConfig,
     traits::{DeviceTrait, HostTrait},
+};
+use uastreamer::{
+    DEFAULT_PORT, SENDER_BUFFER_SIZE,
+    args::SenderCliArgs,
+    enumerate, search_device, search_for_host,
+    streamer::{self, StreamComponent, Streamer},
+    tui::tui,
 };
 
 /// Main entrypoint for the sender
@@ -29,7 +33,7 @@ fn main() -> anyhow::Result<()> {
 
     if args.enumerate {
         enumerate(streamer::Direction::Sender, &host).unwrap();
-        return Ok(())
+        return Ok(());
     }
 
     println!(
@@ -59,9 +63,24 @@ fn main() -> anyhow::Result<()> {
     dbg!(&config);
 
     if let Some(target_server) = args.target_server {
-        let sender = Streamer::construct::<f32>(streamer::Direction::Sender, args.port.unwrap_or(DEFAULT_PORT), Ipv4Addr::from_str(&target_server).expect("Invalid Host Address"), &device, &config, buf_size.try_into().unwrap()).unwrap();
+        let sender = Streamer::construct::<f32>(
+            streamer::Direction::Sender,
+            args.port.unwrap_or(DEFAULT_PORT),
+            Ipv4Addr::from_str(&target_server).expect("Invalid Host Address"),
+            &device,
+            &config,
+            buf_size.try_into().unwrap(),
+            args.ui
+        )
+        .unwrap();
         if args.ui {
-            tui(streamer::Direction::Sender, &device, sender.net_stats, sender.cpal_stats).unwrap();
+            tui(
+                streamer::Direction::Sender,
+                &device,
+                sender.net_stats,
+                sender.cpal_stats,
+            )
+            .unwrap();
         } else {
             println!("Sending... Press ctrl-c to stop");
             loop {}

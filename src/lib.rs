@@ -110,6 +110,7 @@ pub fn search_device(x: &Device, name: &str) -> bool {
     x.name().map(|y| y == name).unwrap_or(false)
 }
 
+/// Creates the debug wav writer
 pub fn create_wav_writer(
     filename: String,
     channels: u16,

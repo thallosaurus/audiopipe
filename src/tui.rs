@@ -128,7 +128,7 @@ impl Widget for &App {
                     Line::from(format!("Input Device Name: {}", self.device_name)),
                     Line::from(format!(
                         "Occupied UDP Buffer Size: {}",
-                        net_stats.occupied_buffer
+                        net_stats.pre_occupied_buffer
                     )),
                     Line::from(format!("Sent Samples: {}", net_stats.received.unwrap_or(0))),
                     Line::from(format!(
@@ -142,7 +142,7 @@ impl Widget for &App {
                     Line::from(format!("Output Device Name: {}", self.device_name)),
                     Line::from(format!(
                         "Occupied UDP Buffer Size: {}",
-                        net_stats.occupied_buffer
+                        net_stats.pre_occupied_buffer
                     )),
                     Line::from(format!(
                         "Received Samples: {}",

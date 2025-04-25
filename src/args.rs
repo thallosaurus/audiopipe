@@ -36,13 +36,10 @@ pub struct ReceiverCliArgs {
 
     /// Port to connect to
     #[arg(short)]
-    pub port: Option<u16>
-
-    // Target IP of the server
-    //#[arg(short)]
-    //pub target_server: String,
+    pub port: Option<u16>, // Target IP of the server
+                           //#[arg(short)]
+                           //pub target_server: String,
 }
-
 
 #[derive(Parser, Debug)]
 #[command(version, about = format!("{} sender (v{})", PKG_NAME, VERSION), long_about = None)]
@@ -78,4 +75,9 @@ pub struct SenderCliArgs {
     /// Port to listen on
     #[arg(short)]
     pub port: Option<u16>,
+
+    /// Dump audio from buffer to wav file
+    #[cfg(debug_assertions)]
+    #[arg(short)]
+    pub wave_output: bool,
 }

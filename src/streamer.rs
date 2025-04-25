@@ -1,4 +1,5 @@
 use std::{
+    fmt::Debug,
     fs::File,
     io::BufWriter,
     net::{self, UdpSocket},
@@ -27,7 +28,8 @@ use crate::create_wav_writer;
 pub struct UdpStats {
     pub sent: Option<usize>,
     pub received: Option<usize>,
-    pub occupied_buffer: usize,
+    pub pre_occupied_buffer: usize,
+    pub post_occupied_buffer: usize,
 }
 
 /// Stats which get sent during each CPAL Callback Invocation after the main action is done
@@ -41,7 +43,7 @@ pub struct CpalStats {
 }
 
 /// Defines the behaivior of the stream
-/// 
+///
 /// Sender: Captures from an audio input stream and sends it over the network
 /// Receiver: Receives from the network and outputs it to a audio output stream
 #[derive(Debug)]
@@ -55,50 +57,38 @@ pub enum Direction {
 /// The Sender Adapter simply copies the input from the specified device to a ringbuffer and sends it over the network
 /// The Receiver Adapter receives the data and outputs it to the specified device
 pub trait StreamComponent {
-    fn construct<T: cpal::SizedSample + Send + Pod + Default + hound::Sample + 'static>(
+    fn construct<T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static>(
         direction: Direction,
         port: u16,
         target: net::Ipv4Addr,
         device: &cpal::Device,
         config: &cpal::StreamConfig,
         buf_size: usize,
+        send_stats: bool,
     ) -> anyhow::Result<Box<Self>>;
 
     /// Appends the given Samples from CPAL callback to the buffer
-    fn process_input<T: cpal::SizedSample + Send + Pod + Default + hound::Sample + 'static>(
+    fn process_input<
+        T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static,
+    >(
         data: &[T],
         info: &InputCallbackInfo,
         output: &mut HeapProd<T>,
-        stats: Arc<Sender<CpalStats>>,
-    ) -> usize {
-        let bytes = bytemuck::cast_slice(data);
-        let appended = output.push_slice(bytes);
-
-        stats
-            .send(CpalStats {
-                consumed: None,
-                requested: Some(data.len()),
-                output_info: None,
-                input_info: Some(info.clone()),
-            })
-            .unwrap();
-
-        appended
-    }
-
-    /// Writes the buffer to the specified CPAL slice
-    fn process_output<T: cpal::SizedSample + Send + Pod + Default + hound::Sample + 'static>(
-        output: &mut [T],
-        info: &OutputCallbackInfo,
-        input: &mut HeapCons<T>,
         writer: &mut Option<WavWriter<BufWriter<File>>>,
         stats: Arc<Sender<CpalStats>>,
+        send_stats: bool,
     ) -> usize {
+        //let bytes = bytemuck::cast_slice(data);
+        //let appended = output.push_slice(bytes);
+
         let mut consumed = 0;
 
-        for sample in output.iter_mut() {
-            *sample = input.try_pop().unwrap_or(Sample::EQUILIBRIUM);
-
+        // Iterate through the input buffer and save data
+        // TODO NOTE: The size of the slice is buffer_size * channelCount,
+        // so you have to slice the data somehow
+        for sample in data.iter() {
+            output.try_push(*sample).unwrap();
+            // If the program runs in debug mode, the debug wav writer becomes available
             #[cfg(debug_assertions)]
             if let Some(writer) = writer {
                 writer.write_sample(*sample).unwrap();
@@ -107,26 +97,73 @@ pub trait StreamComponent {
             consumed += 1;
         }
 
-        stats
-            .send(CpalStats {
-                consumed: Some(consumed),
-                requested: None,
-                input_info: None,
-                output_info: Some(info.clone()),
-            })
-            .unwrap();
+        if send_stats {
+            stats
+                .send(CpalStats {
+                    consumed: Some(consumed),
+                    requested: Some(data.len()),
+                    output_info: None,
+                    input_info: Some(info.clone()),
+                })
+                .unwrap();
+        }
+        consumed
+    }
+
+    /// Writes the buffer to the specified CPAL slice
+    fn process_output<
+        T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static,
+    >(
+        output: &mut [T],
+        info: &OutputCallbackInfo,
+        input: &mut HeapCons<T>,
+        writer: &mut Option<WavWriter<BufWriter<File>>>,
+        stats: Arc<Sender<CpalStats>>,
+        send_stats: bool,
+    ) -> usize {
+        let mut consumed = 0;
+
+        // Pops the oldest element from the front and writes it to the sound buffer
+        // consuming only the bytes needed
+        for sample in output.iter_mut() {
+            *sample = input.try_pop().unwrap_or(Sample::EQUILIBRIUM);
+
+            // If the program runs in debug mode, the debug wav writer becomes available
+            #[cfg(debug_assertions)]
+            if let Some(writer) = writer {
+                writer.write_sample(*sample).unwrap();
+            }
+
+            consumed += 1;
+        }
+
+        // Sends stats about the current operation back to the front
+        if send_stats {
+            stats
+                .send(CpalStats {
+                    consumed: Some(consumed),
+                    requested: None,
+                    input_info: None,
+                    output_info: Some(info.clone()),
+                })
+                .unwrap();
+        }
 
         consumed
     }
 
     /// Entry Point for the UDP Buffer Sender.
     /// Sends the buffer when it is full
-    fn udp_sender_loop<T: cpal::SizedSample + Send + Pod + Default + hound::Sample + 'static>(
+    fn udp_sender_loop<
+        T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static,
+    >(
         socket: UdpSocket,
         buffer_consumer: &mut HeapCons<T>,
         stats: Sender<UdpStats>,
+        send_stats: bool,
     ) {
         loop {
+            // Only send the network package if the network buffer is full to avoid partial sends
             if buffer_consumer.is_full() {
                 // TODO Check if this might slow down communication
                 let mut network_buffer: Box<[T]> =
@@ -134,30 +171,37 @@ pub trait StreamComponent {
 
                 // get buffer size before changes
                 let pre_occupied_buffer = buffer_consumer.occupied_len();
-                
+
                 // Place the network buffer onto the stack
                 buffer_consumer.pop_slice(&mut network_buffer);
 
+                // Occupied Size after operation
                 let post_occupied_buffer = buffer_consumer.occupied_len();
 
+                // The Casted UDP Packet
                 let udp_packet: &[u8] = bytemuck::cast_slice(&network_buffer);
-                //dbg!(packet);
+
                 let _ = socket.send(udp_packet);
 
                 // Send statistics to the channel
-                stats
-                    .send(UdpStats {
-                        sent: Some(udp_packet.len()),
-                        received: None,
-                        occupied_buffer: pre_occupied_buffer,
-                    })
-                    .unwrap();
+                if send_stats {
+                    stats
+                        .send(UdpStats {
+                            sent: Some(udp_packet.len()),
+                            received: None,
+                            pre_occupied_buffer,
+                            post_occupied_buffer,
+                        })
+                        .unwrap();
+                }
             }
         }
     }
 
     /// Entry Point for the UDP Receiver Loop
-    fn udp_receiver_loop<T: cpal::SizedSample + Send + Pod + Default + hound::Sample + 'static>(
+    fn udp_receiver_loop<
+        T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static,
+    >(
         socket: UdpSocket,
         buffer_producer: &mut HeapProd<T>,
         stats: Sender<UdpStats>,
@@ -176,9 +220,9 @@ pub trait StreamComponent {
                 Ok(received) => {
                     // Convert the buffered network samples to the specified sample format
                     let converted_samples: &[T] = bytemuck::cast_slice(&temp_network_buffer);
-                    
+
                     let pre_occupied_buffer = buffer_producer.occupied_len();
-                    
+
                     // Transfer Samples bytewise
                     for &sample in converted_samples {
                         // TODO implement fell-behind logic here
@@ -187,13 +231,13 @@ pub trait StreamComponent {
 
                     let post_occupied_buffer = buffer_producer.occupied_len();
 
-
                     // Send Statistics about the current operation to the stats channel
                     stats
                         .send(UdpStats {
                             sent: None,
                             received: Some(received),
-                            occupied_buffer: pre_occupied_buffer,
+                            pre_occupied_buffer,
+                            post_occupied_buffer,
                         })
                         .unwrap();
                 }
@@ -233,40 +277,42 @@ impl Streamer {
         device: &cpal::Device,
         config: &cpal::StreamConfig,
         buf_size: usize,
+        send_stats: bool,
     ) -> anyhow::Result<Box<Self>> {
         // TODO Implement sample conversion for debug hound writer
         Ok(match format {
-            cpal::SampleFormat::I16 => {
-                Self::construct::<i16>(direction, port, target, device, config, buf_size)
-            }
+            cpal::SampleFormat::I16 => Self::construct::<i16>(
+                direction, port, target, device, config, buf_size, send_stats,
+            ),
             //cpal::SampleFormat::U16 => Self::construct::<u16>(direction, port, target, device, config, buf_size),
-            cpal::SampleFormat::I8 => {
-                Self::construct::<i8>(direction, port, target, device, config, buf_size)
-            }
-            cpal::SampleFormat::I32 => {
-                Self::construct::<i32>(direction, port, target, device, config, buf_size)
-            }
+            cpal::SampleFormat::I8 => Self::construct::<i8>(
+                direction, port, target, device, config, buf_size, send_stats,
+            ),
+            cpal::SampleFormat::I32 => Self::construct::<i32>(
+                direction, port, target, device, config, buf_size, send_stats,
+            ),
             //cpal::SampleFormat::I64 => Self::construct::<i64>(direction, port, target, device, config, buf_size),
             //cpal::SampleFormat::U8 => Self::construct::<u8>(direction, port, target, device, config, buf_size),
             //cpal::SampleFormat::U32 => Self::construct::<u32>(direction, port, target, device, config, buf_size),
             //cpal::SampleFormat::U64 => Self::construct::<u64>(direction, port, target, device, config, buf_size),
             //cpal::SampleFormat::F64 => Self::construct::<f64>(direction, port, target, device, config, buf_size),
-            cpal::SampleFormat::F32 => {
-                Self::construct::<f32>(direction, port, target, device, config, buf_size)
-            }
+            cpal::SampleFormat::F32 => Self::construct::<f32>(
+                direction, port, target, device, config, buf_size, send_stats,
+            ),
             _ => panic!("Unsupported Sample Format: {:?}", format),
         }?)
     }
 }
 
 impl StreamComponent for Streamer {
-    fn construct<T: cpal::SizedSample + Send + Pod + Default + hound::Sample + 'static>(
+    fn construct<T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static>(
         direction: Direction,
         port: u16,
         target: net::Ipv4Addr,
         device: &cpal::Device,
         config: &cpal::StreamConfig,
         buf_size: usize,
+        send_stats: bool,
     ) -> Result<Box<Self>, anyhow::Error> {
         let buf = HeapRb::<T>::new((buf_size as usize) * 2);
         let (mut prod, mut cons) = buf.split();
@@ -281,18 +327,37 @@ impl StreamComponent for Streamer {
                 let socket = UdpSocket::bind("0.0.0.0:0")?;
                 socket.connect(format!("{}:{}", target, port))?;
 
+                #[cfg(debug_assertions)]
+                let mut writer = Some(create_wav_writer(
+                    "sender_dump.wav".to_owned(),
+                    1,
+                    44100,
+                    32,
+                    hound::SampleFormat::Float,
+                )?);
+
+                #[cfg(not(debug_assertions))]
+                let mut writer = None;
+
                 let cpal_tx = cpal_arc.clone();
                 (
                     device.build_input_stream(
                         config,
                         move |data: &[T], c| {
-                            _ = Self::process_input(data, c, &mut prod, cpal_tx.clone());
+                            _ = Self::process_input(
+                                data,
+                                c,
+                                &mut prod,
+                                &mut writer,
+                                cpal_tx.clone(),
+                                send_stats,
+                            );
                         },
                         |err| eprintln!("Stream error: {}", err),
                         None,
                     )?,
                     std::thread::spawn(move || {
-                        Self::udp_sender_loop(socket, &mut cons, net_tx);
+                        Self::udp_sender_loop(socket, &mut cons, net_tx, send_stats);
                     }),
                 )
             }
@@ -323,6 +388,7 @@ impl StreamComponent for Streamer {
                                 &mut cons,
                                 &mut writer,
                                 cpal_tx.clone(),
+                                send_stats,
                             );
                         },
                         |err| eprintln!("Stream error: {}", err),

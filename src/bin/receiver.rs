@@ -1,12 +1,16 @@
 use std::{net::Ipv4Addr, str::FromStr};
 
-use uastreamer::{
-    args::ReceiverCliArgs, enumerate, search_device, search_for_host, streamer::{self, StreamComponent, Streamer}, tui::tui, DEFAULT_PORT, SENDER_BUFFER_SIZE
-};
 use clap::Parser;
 use cpal::{
     StreamConfig,
     traits::{DeviceTrait, HostTrait},
+};
+use uastreamer::{
+    DEFAULT_PORT, SENDER_BUFFER_SIZE,
+    args::ReceiverCliArgs,
+    enumerate, search_device, search_for_host,
+    streamer::{self, StreamComponent, Streamer},
+    tui::tui,
 };
 
 /// Main entrypoint for the receiver
@@ -22,7 +26,7 @@ fn main() -> anyhow::Result<()> {
 
     if args.enumerate {
         enumerate(streamer::Direction::Receiver, &host).unwrap();
-        return Ok(())
+        return Ok(());
     }
 
     // parse device selector
@@ -56,13 +60,28 @@ fn main() -> anyhow::Result<()> {
 
     #[cfg(debug_assertions)]
     let wave_output = args.wave_output;
-    
+
     #[cfg(not(debug_assertions))]
     let wave_output = false;
 
-    let receiver = Streamer::construct::<f32>(streamer::Direction::Receiver, args.port.unwrap_or(DEFAULT_PORT), Ipv4Addr::from_str("0.0.0.0").expect("Invalid Host Address"), &device, &config, buf_size.try_into().unwrap()).unwrap();
+    let receiver = Streamer::construct::<f32>(
+        streamer::Direction::Receiver,
+        args.port.unwrap_or(DEFAULT_PORT),
+        Ipv4Addr::from_str("0.0.0.0").expect("Invalid Host Address"),
+        &device,
+        &config,
+        buf_size.try_into().unwrap(),
+        args.ui
+    )
+    .unwrap();
     if args.ui {
-        tui(streamer::Direction::Receiver, &device, receiver.net_stats, receiver.cpal_stats).unwrap();
+        tui(
+            streamer::Direction::Receiver,
+            &device,
+            receiver.net_stats,
+            receiver.cpal_stats,
+        )
+        .unwrap();
     } else {
         println!("Receiving. Press ctrl+c to exit");
         loop {}
