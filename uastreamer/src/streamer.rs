@@ -21,7 +21,7 @@ use ringbuf::{
     traits::{Consumer, Observer, Producer, Split},
 };
 
-use crate::{create_wav_writer, splitter::ChannelSplitter};
+use crate::{create_wav_writer, splitter::{ChannelMerger, ChannelSplitter}};
 
 /// Stats which get sent after each UDP Event
 #[derive(Default)]
@@ -65,7 +65,7 @@ pub struct StreamerConfig {
 /// The Sender Adapter simply copies the input from the specified device to a ringbuffer and sends it over the network
 /// The Receiver Adapter receives the data and outputs it to the specified device
 pub trait StreamComponent {
-    fn construct<T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static>(
+    fn construct<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static>(
         direction: Direction,
         port: u16,
         target: net::Ipv4Addr,
@@ -76,9 +76,7 @@ pub trait StreamComponent {
     ) -> anyhow::Result<Box<Self>>;
 
     /// Appends the given Samples from CPAL callback to the buffer
-    fn process_input<
-        T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static,
-    >(
+    fn process_input<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static>(
         data: &[T],
         info: &InputCallbackInfo,
         output: &mut HeapProd<T>,
@@ -108,10 +106,10 @@ pub trait StreamComponent {
                 }
             }
             // If the program runs in debug mode, the debug wav writer becomes available
-            #[cfg(debug_assertions)]
-            if let Some(writer) = writer {
+            //#[cfg(debug_assertions)]
+            /*if let Some(writer) = writer {
                 writer.write_sample(*s.sample).unwrap();
-            }
+            }*/
 
             consumed += 1;
         }
@@ -130,9 +128,7 @@ pub trait StreamComponent {
     }
 
     /// Writes the buffer to the specified CPAL slice
-    fn process_output<
-        T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static,
-    >(
+    fn process_output<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static>(
         output: &mut [T],
         info: &OutputCallbackInfo,
         input: &mut HeapCons<T>,
@@ -144,6 +140,11 @@ pub trait StreamComponent {
         let mut consumed = 0;
         // Pops the oldest element from the front and writes it to the sound buffer
         // consuming only the bytes needed
+
+        let selected_channels = vec![];
+
+        let merger = ChannelMerger::new(input, selected_channels, channel_count);
+
         for sample in output.iter_mut() {
             if !cfg!(test) {
                 *sample = input.try_pop().unwrap_or(Sample::EQUILIBRIUM);
@@ -153,10 +154,10 @@ pub trait StreamComponent {
             }
 
             // If the program runs in debug mode, the debug wav writer becomes available
-            #[cfg(debug_assertions)]
+            /*#[cfg(debug_assertions)]
             if let Some(writer) = writer {
                 writer.write_sample(*sample).unwrap();
-            }
+            }*/
 
             consumed += 1;
         }
@@ -178,9 +179,7 @@ pub trait StreamComponent {
 
     /// Entry Point for the UDP Buffer Sender.
     /// Sends the buffer when it is full
-    fn udp_sender_loop<
-        T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static,
-    >(
+    fn udp_sender_loop<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static>(
         socket: UdpSocket,
         buffer_consumer: &mut HeapCons<T>,
         stats: Sender<UdpStats>,
@@ -223,9 +222,7 @@ pub trait StreamComponent {
     }
 
     /// Entry Point for the UDP Receiver Loop
-    fn udp_receiver_loop<
-        T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static,
-    >(
+    fn udp_receiver_loop<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static>(
         socket: UdpSocket,
         buffer_producer: &mut HeapProd<T>,
         stats: Sender<UdpStats>,
@@ -308,18 +305,30 @@ impl Streamer {
             cpal::SampleFormat::I16 => Self::construct::<i16>(
                 direction, port, target, device, config, buf_size, send_stats,
             ),
-            //cpal::SampleFormat::U16 => Self::construct::<u16>(direction, port, target, device, config, buf_size),
+            cpal::SampleFormat::U16 => Self::construct::<u16>(
+                direction, port, target, device, config, buf_size, send_stats,
+            ),
             cpal::SampleFormat::I8 => Self::construct::<i8>(
                 direction, port, target, device, config, buf_size, send_stats,
             ),
             cpal::SampleFormat::I32 => Self::construct::<i32>(
                 direction, port, target, device, config, buf_size, send_stats,
             ),
-            //cpal::SampleFormat::I64 => Self::construct::<i64>(direction, port, target, device, config, buf_size),
-            //cpal::SampleFormat::U8 => Self::construct::<u8>(direction, port, target, device, config, buf_size),
-            //cpal::SampleFormat::U32 => Self::construct::<u32>(direction, port, target, device, config, buf_size),
-            //cpal::SampleFormat::U64 => Self::construct::<u64>(direction, port, target, device, config, buf_size),
-            //cpal::SampleFormat::F64 => Self::construct::<f64>(direction, port, target, device, config, buf_size),
+            cpal::SampleFormat::I64 => Self::construct::<i64>(
+                direction, port, target, device, config, buf_size, send_stats,
+            ),
+            cpal::SampleFormat::U8 => Self::construct::<u8>(
+                direction, port, target, device, config, buf_size, send_stats,
+            ),
+            cpal::SampleFormat::U32 => Self::construct::<u32>(
+                direction, port, target, device, config, buf_size, send_stats,
+            ),
+            cpal::SampleFormat::U64 => Self::construct::<u64>(
+                direction, port, target, device, config, buf_size, send_stats,
+            ),
+            cpal::SampleFormat::F64 => Self::construct::<f64>(
+                direction, port, target, device, config, buf_size, send_stats,
+            ),
             cpal::SampleFormat::F32 => Self::construct::<f32>(
                 direction, port, target, device, config, buf_size, send_stats,
             ),
@@ -329,7 +338,7 @@ impl Streamer {
 }
 
 impl StreamComponent for Streamer {
-    fn construct<T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static>(
+    fn construct<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static>(
         direction: Direction,
         port: u16,
         target: net::Ipv4Addr,
@@ -374,7 +383,6 @@ impl StreamComponent for Streamer {
                                 data,
                                 c,
                                 &mut prod,
-
                                 // It is neccessary to only hand over the specific properties
                                 // or otherwise it will complain
                                 channel_count,

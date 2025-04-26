@@ -2,25 +2,23 @@ use std::fmt::Debug;
 
 use bytemuck::Pod;
 use cpal::ChannelCount;
+use ringbuf::{traits::{Consumer, Observer}, HeapCons};
+
+//trait InputSampleType: cpal::SizedSample + Send + Pod + Default + Debug + 'static {}
 
 /// Special Iterator over the CPAL Buffer, which returns additional infos about the sample.
 /// Is used to work with the interleaved samples
 /// For example for two channels (L+R): [L,R,L,R,L,R,...] and so on
 /// See [SplitChannelSample]
 #[derive(Default)]
-pub struct ChannelSplitter<
-    'a,
-    T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static,
-> {
+pub struct ChannelSplitter<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     data: &'a [T],
     selected_channels: Vec<usize>,
     channel_count: ChannelCount,
     index: usize,
 }
 
-impl<'a, T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static>
-    ChannelSplitter<'a, T>
-{
+impl<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> ChannelSplitter<'a, T> {
     /// Constructs a new, sane ChannelSplitter
     pub fn new(data: &'a [T], selected_channels: Vec<usize>, channel_count: ChannelCount) -> Self {
         ChannelSplitter {
@@ -35,15 +33,12 @@ impl<'a, T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + '
 /// Data which gets returned by the ChannelSplitter.
 /// Holds a reference to the buffer data
 #[derive(Debug)]
-pub struct SplitChannelSample<
-    'a,
-    T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static,
-> {
+pub struct SplitChannelSample<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     pub sample: &'a T,
     pub current_channel: usize,
     pub on_selected_channel: bool,
 }
-impl<'a, T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static> Iterator
+impl<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> Iterator
     for ChannelSplitter<'a, T>
 {
     type Item = SplitChannelSample<'a, T>;
@@ -66,14 +61,30 @@ impl<'a, T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + '
     }
 }
 
-pub struct ChannelMerger<
-    'a,
-    T: cpal::SizedSample + Send + Pod + Default + hound::Sample + Debug + 'static,
-> {
-    data: &'a mut [T],
+pub struct ChannelMerger<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
+    data: &'a mut HeapCons<T>,
     selected_channels: Vec<usize>,
     channel_count: ChannelCount,
     index: usize,
+}
+
+impl<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> ChannelMerger<'a, T> {
+    pub fn new(data: &'a mut HeapCons<T>, selected_channels: Vec<usize>, channel_count: ChannelCount) -> Self {
+        ChannelMerger {
+            data,
+            selected_channels,
+            channel_count,
+            index: 0,
+        }
+    }
+}
+
+impl<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> Iterator for ChannelMerger<'a, T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.data.try_pop()
+    }
 }
 
 #[cfg(test)]
