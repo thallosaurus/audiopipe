@@ -22,7 +22,9 @@ use ringbuf::{
 };
 
 use crate::{
-    create_wav_writer, splitter::{ChannelMerger, ChannelSplitter}, write_debug, DebugWavWriter
+    DebugWavWriter, create_wav_writer,
+    splitter::{ChannelMerger, ChannelSplitter},
+    write_debug,
 };
 
 /// Stats which get sent after each UDP Event
@@ -94,7 +96,7 @@ pub trait StreamComponent {
 
         let mut consumed = 0;
 
-        let splitter = ChannelSplitter::new(data, selected_channels, channel_count);
+        let splitter = ChannelSplitter::new(data, selected_channels, channel_count).unwrap();
 
         // Iterate through the input buffer and save data
         // TODO NOTE: The size of the slice is buffer_size * channelCount,
@@ -144,7 +146,8 @@ pub trait StreamComponent {
         // Pops the oldest element from the front and writes it to the sound buffer
         // consuming only the bytes needed
 
-        let mut merger = ChannelMerger::new(input, selected_channels, channel_count, output.len());
+        let mut merger =
+            ChannelMerger::new(input, selected_channels, channel_count, output.len()).unwrap();
 
         for sample in output.iter_mut() {
             let s = merger.next();
@@ -152,7 +155,6 @@ pub trait StreamComponent {
                 if !cfg!(test) {
                     *sample = s;
                     write_debug(writer, *sample);
-
                 } else {
                     *sample = Sample::EQUILIBRIUM;
                 }
@@ -309,34 +311,104 @@ impl Streamer {
         // TODO Implement sample conversion for debug hound writer
         Ok(match format {
             cpal::SampleFormat::I16 => Self::construct::<i16>(
-                direction, port, target, device, config, selected_channels, buf_size, send_stats,
+                direction,
+                port,
+                target,
+                device,
+                config,
+                selected_channels,
+                buf_size,
+                send_stats,
             ),
             cpal::SampleFormat::U16 => Self::construct::<u16>(
-                direction, port, target, device, config, selected_channels, buf_size, send_stats,
+                direction,
+                port,
+                target,
+                device,
+                config,
+                selected_channels,
+                buf_size,
+                send_stats,
             ),
             cpal::SampleFormat::I8 => Self::construct::<i8>(
-                direction, port, target, device, config, selected_channels, buf_size, send_stats,
+                direction,
+                port,
+                target,
+                device,
+                config,
+                selected_channels,
+                buf_size,
+                send_stats,
             ),
             cpal::SampleFormat::I32 => Self::construct::<i32>(
-                direction, port, target, device, config, selected_channels, buf_size, send_stats,
+                direction,
+                port,
+                target,
+                device,
+                config,
+                selected_channels,
+                buf_size,
+                send_stats,
             ),
             cpal::SampleFormat::I64 => Self::construct::<i64>(
-                direction, port, target, device, config, selected_channels, buf_size, send_stats,
+                direction,
+                port,
+                target,
+                device,
+                config,
+                selected_channels,
+                buf_size,
+                send_stats,
             ),
             cpal::SampleFormat::U8 => Self::construct::<u8>(
-                direction, port, target, device, config, selected_channels, buf_size, send_stats,
+                direction,
+                port,
+                target,
+                device,
+                config,
+                selected_channels,
+                buf_size,
+                send_stats,
             ),
             cpal::SampleFormat::U32 => Self::construct::<u32>(
-                direction, port, target, device, config, selected_channels, buf_size, send_stats,
+                direction,
+                port,
+                target,
+                device,
+                config,
+                selected_channels,
+                buf_size,
+                send_stats,
             ),
             cpal::SampleFormat::U64 => Self::construct::<u64>(
-                direction, port, target, device, config, selected_channels, buf_size, send_stats,
+                direction,
+                port,
+                target,
+                device,
+                config,
+                selected_channels,
+                buf_size,
+                send_stats,
             ),
             cpal::SampleFormat::F64 => Self::construct::<f64>(
-                direction, port, target, device, config, selected_channels, buf_size, send_stats,
+                direction,
+                port,
+                target,
+                device,
+                config,
+                selected_channels,
+                buf_size,
+                send_stats,
             ),
             cpal::SampleFormat::F32 => Self::construct::<f32>(
-                direction, port, target, device, config, selected_channels, buf_size, send_stats,
+                direction,
+                port,
+                target,
+                device,
+                config,
+                selected_channels,
+                buf_size,
+                send_stats,
             ),
             _ => panic!("Unsupported Sample Format: {:?}", format),
         }?)
@@ -369,11 +441,7 @@ impl StreamComponent for Streamer {
                 socket.connect(format!("{}:{}", target, port))?;
 
                 #[cfg(debug_assertions)]
-                let mut writer = create_wav_writer(
-                    "sender_dump".to_owned(),
-                    1,
-                    44100,
-                )?;
+                let mut writer = create_wav_writer("sender_dump".to_owned(), 1, 44100)?;
 
                 let channel_count = config.channels.clone();
                 let cpal_tx = cpal_arc.clone();
@@ -390,7 +458,6 @@ impl StreamComponent for Streamer {
                                 // or otherwise it will complain
                                 channel_count,
                                 sel,
-
                                 &mut writer,
                                 cpal_tx.clone(),
                                 send_stats,
@@ -407,11 +474,7 @@ impl StreamComponent for Streamer {
             Direction::Receiver => {
                 let socket = UdpSocket::bind(("0.0.0.0", port)).expect("Failed to bind UDP socket");
 
-                let mut writer = create_wav_writer(
-                    "receiver_dump".to_owned(),
-                    1,
-                    44100,
-                )?;
+                let mut writer = create_wav_writer("receiver_dump".to_owned(), 1, 44100)?;
 
                 let cpal_tx = cpal_arc.clone();
                 let channel_count = config.channels.clone();

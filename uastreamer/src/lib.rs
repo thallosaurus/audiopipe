@@ -157,7 +157,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_transfer() {
+    fn x_test_transfer() {
 
     }
 }

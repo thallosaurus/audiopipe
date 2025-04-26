@@ -2,7 +2,25 @@ use std::fmt::Debug;
 
 use bytemuck::Pod;
 use cpal::ChannelCount;
-use ringbuf::{traits::{Consumer, Observer}, HeapCons};
+use ringbuf::{
+    HeapCons,
+    traits::{Consumer, Observer},
+};
+
+#[derive(Debug)]
+pub enum SplitterMergerError {
+    SelectedChannelsOverChannelCount,
+}
+
+impl ToString for SplitterMergerError {
+    fn to_string(&self) -> String {
+        match self {
+            SplitterMergerError::SelectedChannelsOverChannelCount => {
+                String::from("more channels selected than there are available on the device")
+            }
+        }
+    }
+}
 
 //type InputSampleType: cpal::SizedSample + Send + Pod + Default + Debug + 'static {}
 
@@ -20,15 +38,24 @@ pub struct ChannelSplitter<'a, T: cpal::SizedSample + Send + Pod + Default + Deb
 
 impl<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> ChannelSplitter<'a, T> {
     /// Constructs a new, sane ChannelSplitter
-    pub fn new(data: &'a [T], selected_channels: Vec<usize>, channel_count: ChannelCount) -> Self {
+    pub fn new(
+        data: &'a [T],
+        selected_channels: Vec<usize>,
+        channel_count: ChannelCount,
+    ) -> Result<Self, SplitterMergerError> {
         let mut selection = selected_channels.clone();
         selection.dedup();
 
-        ChannelSplitter {
-            data,
-            selected_channels: selection,
-            channel_count,
-            index: 0,
+        assert!(selection.len() < channel_count.into());
+        if selection.len() > channel_count.into() {
+            Err(SplitterMergerError::SelectedChannelsOverChannelCount)
+        } else {
+            Ok(ChannelSplitter {
+                data,
+                selected_channels: selection,
+                channel_count,
+                index: 0,
+            })
         }
     }
 }
@@ -65,9 +92,11 @@ impl<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> Iterator
 }
 
 /// Special Iterator that transforms the contents of a ring buffer to the format needed by CPAL
-/// 
+///
 /// Keeps track of the current index and counts up,
 /// returns a sample match if the calculated channel matches
+/// 
+/// It basically is the reverse of [ChannelSplitter]
 pub struct ChannelMerger<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     data: &'a mut HeapCons<T>,
     selected_channels: Vec<usize>,
@@ -77,21 +106,33 @@ pub struct ChannelMerger<'a, T: cpal::SizedSample + Send + Pod + Default + Debug
 }
 
 impl<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> ChannelMerger<'a, T> {
-    pub fn new(data: &'a mut HeapCons<T>, selected_channels: Vec<usize>, channel_count: ChannelCount, output_length: usize) -> Self {
+    pub fn new(
+        data: &'a mut HeapCons<T>,
+        selected_channels: Vec<usize>,
+        channel_count: ChannelCount,
+        output_length: usize,
+    ) -> Result<Self, SplitterMergerError> {
         let mut selection = selected_channels.clone();
         selection.dedup();
 
-        ChannelMerger {
-            data,
-            selected_channels: selection,
-            channel_count,
-            output_length,
-            index: 0,
+        assert!(selection.len() < channel_count.into());
+        if selection.len() > channel_count.into() {
+            Err(SplitterMergerError::SelectedChannelsOverChannelCount)
+        } else {
+            Ok(ChannelMerger {
+                data,
+                selected_channels: selection,
+                channel_count,
+                output_length,
+                index: 0,
+            })
         }
     }
 }
 
-impl<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> Iterator for ChannelMerger<'a, T> {
+impl<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> Iterator
+    for ChannelMerger<'a, T>
+{
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -107,13 +148,15 @@ impl<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> Iterator
         } else {
             None
         }
-
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use ringbuf::{traits::{Producer, Split}, HeapRb};
+    use ringbuf::{
+        HeapRb,
+        traits::{Producer, Split},
+    };
 
     use super::*;
 
@@ -122,7 +165,7 @@ mod tests {
         let test_data: Vec<i32> = vec![1, 2, 3, 4, 5, 6];
         let selected_channels = vec![1];
 
-        let splitter = ChannelSplitter::new(test_data.as_slice(), selected_channels, 2);
+        let splitter = ChannelSplitter::new(test_data.as_slice(), selected_channels, 2).unwrap();
 
         let mut output: Vec<SplitChannelSample<'_, i32>> = Vec::new();
 
@@ -160,13 +203,21 @@ mod tests {
 
         for d in test_data.iter() {
             prod.try_push(*d).unwrap();
-        }        
+        }
 
-        let merger = ChannelMerger::new(&mut cons, vec![1, 3], 4, output_data.len());
+        let merger = ChannelMerger::new(&mut cons, vec![1, 3], 4, output_data.len()).unwrap();
 
-        let v: Vec<i32> = merger.into_iter().map(|e|e).collect();
+        let v: Vec<i32> = merger.into_iter().map(|e| e).collect();
         println!("{:?}", v);
 
         assert_eq!(v, output_data);
+    }
+
+    #[test]
+    fn test_invalid_input() {
+        let test_data: Vec<i32> = vec![1, 2, 3, 4, 5, 6];
+        let selected_channels = vec![1, 2, 3];
+
+        _ = ChannelSplitter::new(test_data.as_slice(), selected_channels, 2);
     }
 }
