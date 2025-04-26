@@ -1,0 +1,17 @@
+[package]
+name = "uastreamer"
+version = "0.2.1"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.98"
+bytemuck = "1.22.0"
+clap = { version = "4.5.37", features = ["derive"] }
+cpal = "0.15.3"
+crossterm = "0.29.0"
+hound = "3.5.1"
+ratatui = "0.29.0"
+ringbuf = "0.4.8"
+
+[dev-dependencies]
+rand = "0.9.1"
