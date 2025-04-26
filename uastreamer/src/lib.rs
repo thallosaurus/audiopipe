@@ -1,4 +1,4 @@
-use std::{fs::File, io::BufWriter, time::SystemTime};
+use std::{fs::{create_dir_all, File}, io::BufWriter, time::SystemTime};
 
 use bytemuck::Pod;
 use cpal::{traits::*, *};
@@ -132,6 +132,9 @@ pub fn create_wav_writer(
     let now = SystemTime::now();
 
     let timestamp = now.duration_since(SystemTime::UNIX_EPOCH)?;
+
+    #[cfg(debug_assertions)]
+    create_dir_all("dump/")?;
 
     #[cfg(debug_assertions)]
     let writer = Ok(Some(hound::WavWriter::create(format!("dump/{}_{}.wav", timestamp.as_secs(), filename), spec)?));

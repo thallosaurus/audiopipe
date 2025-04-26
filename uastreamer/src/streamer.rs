@@ -375,8 +375,6 @@ impl StreamComponent for Streamer {
                     44100,
                 )?;
 
-
-
                 let channel_count = config.channels.clone();
                 let cpal_tx = cpal_arc.clone();
                 (
