@@ -32,6 +32,9 @@ pub mod args;
 /// Holds everything related to the audio buffer splitter
 pub mod splitter;
 
+/// Holds everything related to the TCP Communication Channel
+pub mod control;
+
 /// Enumerate all available devices on the system
 pub fn enumerate(direction: Direction, host: &Host) -> anyhow::Result<()> {
     println!("Supported hosts:\n  {:?}", cpal::ALL_HOSTS);
