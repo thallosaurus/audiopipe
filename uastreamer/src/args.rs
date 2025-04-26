@@ -32,9 +32,7 @@ pub struct ReceiverCliArgs {
 
     /// Port to connect to
     #[arg(short)]
-    pub port: Option<u16>, // Target IP of the server
-                           //#[arg(short)]
-                           //pub target_server: String,
+    pub port: Option<u16>,
 
     /// Selects the tracks to which the app will push data to
     #[clap(short)]

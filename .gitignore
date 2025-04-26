@@ -1,3 +1,3 @@
 /target
-*_dump.wav
+dump/*.wav
 .DS_Store

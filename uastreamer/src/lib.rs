@@ -1,5 +1,6 @@
-use std::{fs::File, io::BufWriter};
+use std::{fs::File, io::BufWriter, time::SystemTime};
 
+use bytemuck::Pod;
 use cpal::{traits::*, *};
 use hound::WavWriter;
 use streamer::Direction;
@@ -113,22 +114,39 @@ pub fn search_device(x: &Device, name: &str) -> bool {
     x.name().map(|y| y == name).unwrap_or(false)
 }
 
+pub type DebugWavWriter = WavWriter<BufWriter<File>>;
+
 /// Creates the debug wav writer
 pub fn create_wav_writer(
     filename: String,
     channels: u16,
     sample_rate: u32,
-    bits_per_sample: u16,
-    sample_format: hound::SampleFormat,
-) -> anyhow::Result<WavWriter<BufWriter<File>>> {
+) -> anyhow::Result<Option<DebugWavWriter>> {
     let spec = hound::WavSpec {
         channels,
         sample_rate,
-        bits_per_sample,
-        sample_format,
+        bits_per_sample: 32,
+        sample_format: hound::SampleFormat::Float,
     };
 
-    Ok(hound::WavWriter::create(filename, spec)?)
+    let now = SystemTime::now();
+
+    let timestamp = now.duration_since(SystemTime::UNIX_EPOCH)?;
+
+    #[cfg(debug_assertions)]
+    let writer = Ok(Some(hound::WavWriter::create(format!("dump/{}_{}.wav", timestamp.as_secs(), filename), spec)?));
+
+    #[cfg(not(debug_assertions))]
+    let writer = Ok(None);
+
+    writer
+}
+
+pub fn write_debug<T: cpal::SizedSample + Send + Pod + Default + 'static>(writer: &mut Option<DebugWavWriter>, sample: T) {
+    if let Some(writer) = writer {
+        let s: f32 = bytemuck::cast(sample);
+        writer.write_sample(s).unwrap();
+    }
 }
 
 #[cfg(test)]

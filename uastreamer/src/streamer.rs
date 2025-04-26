@@ -22,8 +22,7 @@ use ringbuf::{
 };
 
 use crate::{
-    create_wav_writer,
-    splitter::{ChannelMerger, ChannelSplitter},
+    create_wav_writer, splitter::{ChannelMerger, ChannelSplitter}, write_debug, DebugWavWriter
 };
 
 /// Stats which get sent after each UDP Event
@@ -86,7 +85,7 @@ pub trait StreamComponent {
         output: &mut HeapProd<T>,
         channel_count: ChannelCount,
         selected_channels: Vec<usize>,
-        writer: &mut Option<WavWriter<BufWriter<File>>>,
+        writer: &mut Option<DebugWavWriter>,
         stats: Arc<Sender<CpalStats>>,
         send_stats: bool,
     ) -> usize {
@@ -137,7 +136,7 @@ pub trait StreamComponent {
         input: &mut HeapCons<T>,
         channel_count: ChannelCount,
         selected_channels: Vec<usize>,
-        writer: &mut Option<WavWriter<BufWriter<File>>>,
+        writer: &mut Option<DebugWavWriter>,
         stats: Arc<Sender<CpalStats>>,
         send_stats: bool,
     ) -> usize {
@@ -147,14 +146,13 @@ pub trait StreamComponent {
 
         let mut merger = ChannelMerger::new(input, selected_channels, channel_count, output.len());
 
-        /*for sample in output.iter_mut() {
-            *sample = merger
-        }*/
         for sample in output.iter_mut() {
             let s = merger.next();
             if let Some(s) = s {
                 if !cfg!(test) {
                     *sample = s;
+                    write_debug(writer, *sample);
+
                 } else {
                     *sample = Sample::EQUILIBRIUM;
                 }
@@ -371,16 +369,13 @@ impl StreamComponent for Streamer {
                 socket.connect(format!("{}:{}", target, port))?;
 
                 #[cfg(debug_assertions)]
-                let mut writer = Some(create_wav_writer(
-                    "sender_dump.wav".to_owned(),
+                let mut writer = create_wav_writer(
+                    "sender_dump".to_owned(),
                     1,
                     44100,
-                    32,
-                    hound::SampleFormat::Float,
-                )?);
+                )?;
 
-                #[cfg(not(debug_assertions))]
-                let mut writer = None;
+
 
                 let channel_count = config.channels.clone();
                 let cpal_tx = cpal_arc.clone();
@@ -414,17 +409,11 @@ impl StreamComponent for Streamer {
             Direction::Receiver => {
                 let socket = UdpSocket::bind(("0.0.0.0", port)).expect("Failed to bind UDP socket");
 
-                #[cfg(debug_assertions)]
-                let mut writer = Some(create_wav_writer(
-                    "receiver_dump.wav".to_owned(),
+                let mut writer = create_wav_writer(
+                    "receiver_dump".to_owned(),
                     1,
                     44100,
-                    32,
-                    hound::SampleFormat::Float,
-                )?);
-
-                #[cfg(not(debug_assertions))]
-                let mut writer = None;
+                )?;
 
                 let cpal_tx = cpal_arc.clone();
                 let channel_count = config.channels.clone();

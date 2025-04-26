@@ -64,6 +64,10 @@ impl<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> Iterator
     }
 }
 
+/// Special Iterator that transforms the contents of a ring buffer to the format needed by CPAL
+/// 
+/// Keeps track of the current index and counts up,
+/// returns a sample match if the calculated channel matches
 pub struct ChannelMerger<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     data: &'a mut HeapCons<T>,
     selected_channels: Vec<usize>,
@@ -91,11 +95,6 @@ impl<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> Iterator
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        //self.data.try_pop()
-        //let buf_mulitplicator = self.selected_channels.len();
-
-//        let zero: T = cpal::Sample::EQUILIBRIUM;
-
         let current_channel = self.index % self.channel_count as usize;
 
         if self.index < self.output_length {
