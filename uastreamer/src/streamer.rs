@@ -22,9 +22,7 @@ use ringbuf::{
 };
 
 use crate::{
-    DebugWavWriter, create_wav_writer,
-    splitter::{ChannelMerger, ChannelSplitter},
-    write_debug,
+    control::TcpControlFlow, create_wav_writer, splitter::{ChannelMerger, ChannelSplitter}, write_debug, DebugWavWriter
 };
 
 /// Stats which get sent after each UDP Event
@@ -57,6 +55,7 @@ pub enum Direction {
 }
 
 pub struct StreamerConfig {
+    direction: Direction,
     stream_config: cpal::StreamConfig,
     buffer_size: usize,
     channel_count: ChannelCount,
@@ -520,6 +519,16 @@ impl StreamComponent for Streamer {
     }
 
     fn set_bufer_size(&self, size: usize) {
+        todo!()
+    }
+}
+
+impl TcpControlFlow for Streamer {
+    fn start_stream(&self) {
+        todo!()
+    }
+
+    fn connect_to_stream(&self) {
         todo!()
     }
 }

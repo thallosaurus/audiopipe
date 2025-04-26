@@ -61,7 +61,6 @@ fn main() -> anyhow::Result<()> {
         }
     };
 
-    #[cfg(debug_assertions)]
     dbg!(&config);
 
     if let Some(target_server) = args.target_server {
