@@ -71,6 +71,7 @@ fn main() -> anyhow::Result<()> {
             Ipv4Addr::from_str(&target_server).expect("Invalid Host Address"),
             &device,
             &config,
+            args.input_channels,
             buf_size.try_into().unwrap(),
             args.ui
         )

@@ -103,7 +103,7 @@ pub fn search_for_host(name: &str) -> anyhow::Result<Host> {
     let host_id = cpal::available_hosts()
         .into_iter()
         .find(|id| id.name() == name)
-        .expect("error while retriving Sound Host Name");
+        .expect("error while retriving sound host name");
 
     Ok(cpal::host_from_id(host_id)?)
 }

@@ -17,10 +17,6 @@ pub struct ReceiverCliArgs {
     #[arg(short, long)]
     pub buffer_size: Option<u32>,
 
-    /// Channel Selector
-    #[arg(short, long, requires = "device", requires = "audio_host")]
-    pub channel: Option<u16>,
-
     /// Dump Audio Config
     #[arg(short)]
     pub enumerate: bool,
@@ -40,7 +36,9 @@ pub struct ReceiverCliArgs {
                            //#[arg(short)]
                            //pub target_server: String,
 
-    pub stereo: bool,
+    /// Selects the tracks to which the app will push data to
+    #[clap(short)]
+    pub output_channels: Vec<usize>,
 }
 
 #[derive(Parser, Debug)]
@@ -57,10 +55,6 @@ pub struct SenderCliArgs {
     /// Buffer Size
     #[arg(short, long)]
     pub buffer_size: Option<u32>,
-
-    /// Channel Selector
-    #[arg(short, long, requires = "device", requires = "audio_host")]
-    pub channel: Option<u16>,
 
     /// Dump Audio Config
     #[arg(short)]
@@ -83,6 +77,7 @@ pub struct SenderCliArgs {
     #[arg(short)]
     pub wave_output: bool,
     
-    #[arg(short)]
-    pub stereo: bool,
+    /// Selects the tracks from which the app will pull samples from
+    #[clap(short)]
+    pub input_channels: Vec<usize>,
 }

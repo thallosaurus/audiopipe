@@ -38,19 +38,21 @@ fn main() -> anyhow::Result<()> {
     }
     .expect("no output device");
 
+    let default_config = device.default_output_config()?;
+
     // parse buffer and channel selector
     let buf_size;
-    let config = match (args.channel, args.buffer_size) {
-        (Some(channel), Some(buffer_size)) => {
+    let config = match args.buffer_size {
+        Some(buffer_size) => {
             buf_size = buffer_size;
 
             StreamConfig {
-                channels: channel,
+                channels: default_config.channels(),
                 sample_rate: cpal::SampleRate(44100),
                 buffer_size: cpal::BufferSize::Fixed(buffer_size),
             }
         }
-        (_, _) => {
+        _ => {
             buf_size = SENDER_BUFFER_SIZE as u32;
             device.default_output_config()?.into()
         }
@@ -64,12 +66,15 @@ fn main() -> anyhow::Result<()> {
     #[cfg(not(debug_assertions))]
     let wave_output = false;
 
+    dbg!(&args.output_channels);
+
     let receiver = Streamer::construct::<f32>(
         streamer::Direction::Receiver,
         args.port.unwrap_or(DEFAULT_PORT),
         Ipv4Addr::from_str("0.0.0.0").expect("Invalid Host Address"),
         &device,
         &config,
+        args.output_channels,
         buf_size.try_into().unwrap(),
         args.ui
     )

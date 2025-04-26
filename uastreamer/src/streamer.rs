@@ -21,7 +21,10 @@ use ringbuf::{
     traits::{Consumer, Observer, Producer, Split},
 };
 
-use crate::{create_wav_writer, splitter::{ChannelMerger, ChannelSplitter}};
+use crate::{
+    create_wav_writer,
+    splitter::{ChannelMerger, ChannelSplitter},
+};
 
 /// Stats which get sent after each UDP Event
 #[derive(Default)]
@@ -71,6 +74,7 @@ pub trait StreamComponent {
         target: net::Ipv4Addr,
         device: &cpal::Device,
         config: &cpal::StreamConfig,
+        selected_channels: Vec<usize>,
         buf_size: usize,
         send_stats: bool,
     ) -> anyhow::Result<Box<Self>>;
@@ -81,6 +85,7 @@ pub trait StreamComponent {
         info: &InputCallbackInfo,
         output: &mut HeapProd<T>,
         channel_count: ChannelCount,
+        selected_channels: Vec<usize>,
         writer: &mut Option<WavWriter<BufWriter<File>>>,
         stats: Arc<Sender<CpalStats>>,
         send_stats: bool,
@@ -90,9 +95,7 @@ pub trait StreamComponent {
 
         let mut consumed = 0;
 
-        let temp_selected_channels = vec![0, 1]; // TODO store this somewhere on the struct
-
-        let splitter = ChannelSplitter::new(data, temp_selected_channels, channel_count);
+        let splitter = ChannelSplitter::new(data, selected_channels, channel_count);
 
         // Iterate through the input buffer and save data
         // TODO NOTE: The size of the slice is buffer_size * channelCount,
@@ -133,6 +136,7 @@ pub trait StreamComponent {
         info: &OutputCallbackInfo,
         input: &mut HeapCons<T>,
         channel_count: ChannelCount,
+        selected_channels: Vec<usize>,
         writer: &mut Option<WavWriter<BufWriter<File>>>,
         stats: Arc<Sender<CpalStats>>,
         send_stats: bool,
@@ -141,16 +145,19 @@ pub trait StreamComponent {
         // Pops the oldest element from the front and writes it to the sound buffer
         // consuming only the bytes needed
 
-        let selected_channels = vec![];
+        let mut merger = ChannelMerger::new(input, selected_channels, channel_count, output.len());
 
-        let merger = ChannelMerger::new(input, selected_channels, channel_count);
-
+        /*for sample in output.iter_mut() {
+            *sample = merger
+        }*/
         for sample in output.iter_mut() {
-            if !cfg!(test) {
-                *sample = input.try_pop().unwrap_or(Sample::EQUILIBRIUM);
-            } else {
-                // Dont write to the speaker while running in test mode...
-                _ = input.try_pop().unwrap_or(Sample::EQUILIBRIUM);
+            let s = merger.next();
+            if let Some(s) = s {
+                if !cfg!(test) {
+                    *sample = s;
+                } else {
+                    *sample = Sample::EQUILIBRIUM;
+                }
             }
 
             // If the program runs in debug mode, the debug wav writer becomes available
@@ -297,40 +304,41 @@ impl Streamer {
         target: net::Ipv4Addr,
         device: &cpal::Device,
         config: &cpal::StreamConfig,
+        selected_channels: Vec<usize>,
         buf_size: usize,
         send_stats: bool,
     ) -> anyhow::Result<Box<Self>> {
         // TODO Implement sample conversion for debug hound writer
         Ok(match format {
             cpal::SampleFormat::I16 => Self::construct::<i16>(
-                direction, port, target, device, config, buf_size, send_stats,
+                direction, port, target, device, config, selected_channels, buf_size, send_stats,
             ),
             cpal::SampleFormat::U16 => Self::construct::<u16>(
-                direction, port, target, device, config, buf_size, send_stats,
+                direction, port, target, device, config, selected_channels, buf_size, send_stats,
             ),
             cpal::SampleFormat::I8 => Self::construct::<i8>(
-                direction, port, target, device, config, buf_size, send_stats,
+                direction, port, target, device, config, selected_channels, buf_size, send_stats,
             ),
             cpal::SampleFormat::I32 => Self::construct::<i32>(
-                direction, port, target, device, config, buf_size, send_stats,
+                direction, port, target, device, config, selected_channels, buf_size, send_stats,
             ),
             cpal::SampleFormat::I64 => Self::construct::<i64>(
-                direction, port, target, device, config, buf_size, send_stats,
+                direction, port, target, device, config, selected_channels, buf_size, send_stats,
             ),
             cpal::SampleFormat::U8 => Self::construct::<u8>(
-                direction, port, target, device, config, buf_size, send_stats,
+                direction, port, target, device, config, selected_channels, buf_size, send_stats,
             ),
             cpal::SampleFormat::U32 => Self::construct::<u32>(
-                direction, port, target, device, config, buf_size, send_stats,
+                direction, port, target, device, config, selected_channels, buf_size, send_stats,
             ),
             cpal::SampleFormat::U64 => Self::construct::<u64>(
-                direction, port, target, device, config, buf_size, send_stats,
+                direction, port, target, device, config, selected_channels, buf_size, send_stats,
             ),
             cpal::SampleFormat::F64 => Self::construct::<f64>(
-                direction, port, target, device, config, buf_size, send_stats,
+                direction, port, target, device, config, selected_channels, buf_size, send_stats,
             ),
             cpal::SampleFormat::F32 => Self::construct::<f32>(
-                direction, port, target, device, config, buf_size, send_stats,
+                direction, port, target, device, config, selected_channels, buf_size, send_stats,
             ),
             _ => panic!("Unsupported Sample Format: {:?}", format),
         }?)
@@ -344,6 +352,7 @@ impl StreamComponent for Streamer {
         target: net::Ipv4Addr,
         device: &cpal::Device,
         config: &cpal::StreamConfig,
+        selected_channels: Vec<usize>,
         buf_size: usize,
         send_stats: bool,
     ) -> Result<Box<Self>, anyhow::Error> {
@@ -379,6 +388,7 @@ impl StreamComponent for Streamer {
                     device.build_input_stream(
                         config,
                         move |data: &[T], c| {
+                            let sel = selected_channels.clone();
                             _ = Self::process_input(
                                 data,
                                 c,
@@ -386,6 +396,8 @@ impl StreamComponent for Streamer {
                                 // It is neccessary to only hand over the specific properties
                                 // or otherwise it will complain
                                 channel_count,
+                                sel,
+
                                 &mut writer,
                                 cpal_tx.clone(),
                                 send_stats,
@@ -420,11 +432,13 @@ impl StreamComponent for Streamer {
                     device.build_output_stream(
                         config.into(),
                         move |output: &mut [T], info| {
+                            let sel = selected_channels.clone();
                             _ = Self::process_output(
                                 output,
                                 info,
                                 &mut cons,
                                 channel_count,
+                                sel,
                                 &mut writer,
                                 cpal_tx.clone(),
                                 send_stats,
