@@ -115,7 +115,7 @@ impl<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> ChannelM
         let mut selection = selected_channels.clone();
         selection.dedup();
 
-        assert!(selection.len() < channel_count.into());
+        //assert!(selection.len() < channel_count.into());
         if selection.len() > channel_count.into() {
             Err(SplitterMergerError::SelectedChannelsOverChannelCount)
         } else {
