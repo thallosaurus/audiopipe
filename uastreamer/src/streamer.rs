@@ -15,7 +15,7 @@ use cpal::{
     ChannelCount, InputCallbackInfo, OutputCallbackInfo, Sample, Stream,
     traits::{DeviceTrait, StreamTrait},
 };
-use hound::WavWriter;
+
 use ringbuf::{
     HeapCons, HeapProd, HeapRb,
     traits::{Consumer, Observer, Producer, Split},

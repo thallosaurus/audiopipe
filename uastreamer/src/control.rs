@@ -1,11 +1,45 @@
 use core::net;
 use std::{
-    io::{Read, Write},
+    io::{BufRead, BufReader, BufWriter, Read, Write},
     net::{IpAddr, TcpListener, TcpStream},
     thread::JoinHandle,
 };
 
 use serde::{Deserialize, Serialize};
+
+use crate::streamer::Direction;
+
+pub struct TcpCommunication {
+    pub direction: Direction,
+}
+
+impl TcpCommunication {
+    pub fn serve(&self, addr: &str) -> std::io::Result<()> {
+        match self.direction {
+            Direction::Sender => {
+                let mut stream = TcpCommunication::create_new_tcp_stream(addr)?;
+                println!("connecting to {}", addr);
+                self.sender_loop(&mut stream)?;
+            }
+            Direction::Receiver => {
+                let listener = TcpCommunication::create_new_tcp_listener(addr)?;
+                println!("listening to {}", addr);
+                self.receiver_loop(listener)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl TcpControlFlow for TcpCommunication {
+    fn start_stream(&self) {
+        todo!()
+    }
+
+    fn connect_to_stream(&self) {
+        todo!()
+    }
+}
 
 /// Contains methods that implement the tcp control functionality
 ///
@@ -24,54 +58,88 @@ pub trait TcpControlFlow {
         TcpStream::connect(addr)
     }
 
-    //fn get_tcp_listener(&self) -> TcpListener;
-    //fn get_tcp_stream(&self) -> TcpStream;
     fn start_stream(&self);
     fn connect_to_stream(&self);
+
+    fn read_buffer(stream: &mut TcpStream) -> std::io::Result<TcpControlPacket> {
+        let mut reader = BufReader::new(stream);
+
+        let mut buf = String::new();
+        reader.read_line(&mut buf)?;
+
+        let json = serde_json::from_str(&buf)?;
+
+        dbg!(&json);
+
+        Ok(json)
+    }
+
+    fn write_buffer(stream: &TcpStream, packet: TcpControlPacket) -> std::io::Result<()> {
+        let mut buf_writer = BufWriter::new(stream);
+
+        let json = serde_json::to_vec(&packet)?;
+
+        // TODO HUH?!?!
+        buf_writer.write_all(&json)?;
+        buf_writer.write(b"\r\n")?;
+        buf_writer.flush()?;
+        Ok(())
+    }
+
     fn sender_loop(&self, stream: &mut TcpStream) -> std::io::Result<()> {
         // Start by connecting
-        let json = tcp_packet(TcpControlPacket {
+        let packet = TcpControlPacket {
             state: TcpControlState::Connect,
-        })?;
+        };
 
-        stream.write(&json)?;
+        Self::write_buffer(&stream, packet)?;
+
+        let json = Self::read_buffer(stream)?;
+
+        dbg!(&json);
+
+        /*        stream.write_all(json)?;
 
         // wait for receiver to send back its endpoint address
         let mut s = String::new();
         stream.read_to_string(&mut s)?;
 
         dbg!(&s);
-        self.connect_to_stream();
+        //self.connect_to_stream();*/
+
+        match json.state {
+            TcpControlState::Endpoint(e) => {
+                println!("Connecting to port {}", e);
+            }
+            _ => todo!(),
+        }
 
         Ok(())
     }
+
     fn receiver_loop(&self, listener: TcpListener) -> std::io::Result<()> {
         for stream in listener.incoming() {
-            let mut s = String::new();
+            println!("Connected");
 
-            let mut st = stream?;
-            st.read_to_string(&mut s)?;
+            let mut stream = stream?;
 
-            let json = json_str(s)?;
-            dbg!(&json);
+            let connection_packet = Self::read_buffer(&mut stream)?;
 
-            assert_eq!(json.state, TcpControlState::Connect);
+            if connection_packet.state == TcpControlState::Connect {
+                //if there is no connection already
+                // open new stream
+                println!("Opening new Stream");
+                let packet = TcpControlPacket {
+                    state: TcpControlState::Endpoint(12345),
+                };
+                dbg!(&packet);
 
-            match json.state {
-                TcpControlState::Connect => {
-                    let packet = TcpControlPacket {
-                        state: TcpControlState::Endpoint(12345),
-                    };
+                // send back endpoint
+                Self::write_buffer(&stream, packet)?;
 
-                    dbg!(&packet);
-
-                    self.start_stream();
-
-                    let endpoint = tcp_packet(packet)?;
-
-                    st.write(&endpoint)?;
-                }
-                _ => todo!(),
+                break;
+            } else {
+                // refuse
             }
         }
         Ok(())
@@ -87,13 +155,47 @@ fn json_str(packet: String) -> std::io::Result<TcpControlPacket> {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-enum TcpControlState {
+pub enum TcpControlState {
     Connect,
     Endpoint(u16),
     Disconnect,
+    Error,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct TcpControlPacket {
+pub struct TcpControlPacket {
     state: TcpControlState,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{thread, time::Duration};
+
+    use threadpool::ThreadPool;
+
+    use super::*;
+
+    #[test]
+    fn test_transfer() {
+        let pool = ThreadPool::new(2);
+
+        pool.execute(|| {
+            let server = TcpCommunication {
+                direction: Direction::Receiver,
+            };
+            server.serve("127.0.0.1:1234").unwrap();
+        });
+
+        // Wait a second for server to be started
+        thread::sleep(Duration::from_secs(1));
+
+        pool.execute(|| {
+            let client = TcpCommunication {
+                direction: Direction::Sender,
+            };
+            client.serve("127.0.0.1:1234").unwrap();
+        });
+
+        pool.join();
+    }
 }
