@@ -29,12 +29,12 @@ impl TcpCommunication {
             Direction::Sender => {
                 let mut stream = TcpCommunication::create_new_tcp_stream(tcp_addr)?;
                 println!("connecting to {}", tcp_addr);
-                self.sender_loop(&mut stream, streamer_config, device)?;
+                self.sender_loop(tcp_addr, &mut stream, streamer_config, device)?;
             }
             Direction::Receiver => {
                 let listener = TcpCommunication::create_new_tcp_listener(tcp_addr)?;
                 println!("listening to {}", tcp_addr);
-                self.receiver_loop(listener, streamer_config, device)?;
+                self.receiver_loop(tcp_addr, listener, streamer_config, device)?;
             }
         }
         Ok(())
@@ -51,7 +51,7 @@ impl TcpControlFlow for TcpCommunication {
         // TODO Implement more data types
         // locked to f32 for now
         Streamer::construct::<f32>(
-            Ipv4Addr::from_str(&target).expect("Invalid Host Address"),
+            std::net::SocketAddr::from_str(&target).expect("Invalid Host Address"),
             &device,
             streamer_config,
         )
@@ -110,6 +110,7 @@ pub trait TcpControlFlow {
     /// This is the loop that gets called when the mode is set to [Direction::Sender]
     fn sender_loop(
         &self,
+        target_addr: &str,
         stream: &mut TcpStream,
         streamer_config: StreamerConfig,
         device: Device,
@@ -135,8 +136,8 @@ pub trait TcpControlFlow {
 
                 // TODO implement packet validation
 
-                #[cfg(not(debug_assertions))]
-                let streamer = self.start_stream(streamer_config, device);
+                //#[cfg(not(debug_assertions))]
+                let streamer = self.start_stream(streamer_config, device, target_addr);
 
                 //wait until the connection is disconnected or dropped
                 loop {
@@ -169,9 +170,19 @@ pub trait TcpControlFlow {
         Ok(())
     }
 
+    fn send_ping(stream: &TcpStream) -> std::io::Result<()> {
+        let packet = TcpControlPacket {
+            state: TcpControlState::Ping,
+        };
+
+        Self::write_buffer(stream, packet)?;
+        Ok(())
+    }
+
     /// This is the loop that gets called when the mode is set to [Direction::Receiver]
     fn receiver_loop(
         &self,
+        target_addr: &str,
         listener: TcpListener,
         streamer_config: StreamerConfig,
         device: Device,
@@ -191,8 +202,8 @@ pub trait TcpControlFlow {
                 println!("Opening new Stream");
 
                 //open device
-                #[cfg(not(debug_assertions))]
-                let streamer = self.start_stream(streamer_config, device, "0.0.0.0");
+                //#[cfg(not(debug_assertions))]
+                let streamer = self.start_stream(streamer_config, device, target_addr);
 
                 /*#[cfg(debug_assertions)]
                 let _udp_stream: Option<Streamer> = None;
@@ -218,6 +229,10 @@ pub trait TcpControlFlow {
                     dbg!(&packet);
 
                     match packet.state {
+                        TcpControlState::Ping => {
+                            //send back pong
+                            Self::send_ping(&stream)?;
+                        }
                         TcpControlState::Error => {
                             println!("tcp error occurred");
                         }
@@ -245,6 +260,7 @@ pub trait TcpControlFlow {
 pub enum TcpControlState {
     Connect,
     Endpoint(u16),
+    Ping,
     Disconnect,
     Error,
 }

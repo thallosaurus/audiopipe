@@ -7,10 +7,7 @@ use cpal::{
 };
 
 use crate::{
-    DEFAULT_PORT, SENDER_BUFFER_SIZE,
-    args::SenderCliArgs,
-    enumerate, search_device, search_for_host,
-    streamer::{self, Direction},
+    args::{ReceiverCliArgs, SenderCliArgs}, enumerate, search_device, search_for_host, streamer::{self, Direction}, DEFAULT_PORT, SENDER_BUFFER_SIZE
 };
 
 #[derive(Clone)]
@@ -27,16 +24,16 @@ pub struct StreamerConfig {
 
 impl StreamerConfig {
     pub fn from_cli_args(direction: Direction) -> anyhow::Result<(Self, Device)> {
-        let args = SenderCliArgs::parse();
-        // parse audio system host name
-        let host = if let Some(host) = args.audio_host {
-            search_for_host(&host)?
-        } else {
-            cpal::default_host()
-        };
-
+        
         let (device, streamer_config) = match direction {
             Direction::Sender => {
+                let args = SenderCliArgs::parse();
+                // parse audio system host name
+                let host = if let Some(host) = args.audio_host {
+                    search_for_host(&host)?
+                } else {
+                    cpal::default_host()
+                };
                 let device = if let Some(device) = args.device {
                     host.input_devices()?.find(|x| search_device(x, &device))
                 } else {
@@ -78,6 +75,13 @@ impl StreamerConfig {
                 (device, sconfig)
             }
             Direction::Receiver => {
+                let args = ReceiverCliArgs::parse();
+                // parse audio system host name
+                let host = if let Some(host) = args.audio_host {
+                    search_for_host(&host)?
+                } else {
+                    cpal::default_host()
+                };
                 let device = if let Some(device) = args.device {
                     host.output_devices()?.find(|x| search_device(x, &device))
                 } else {

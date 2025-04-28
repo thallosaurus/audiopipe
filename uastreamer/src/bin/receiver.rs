@@ -76,7 +76,7 @@ fn main() -> anyhow::Result<()> {
     };
 
     let receiver = Streamer::construct::<f32>(
-        Ipv4Addr::from_str("0.0.0.0").expect("Invalid Host Address"),
+        std::net::SocketAddr::from_str("0.0.0.0").expect("Invalid Host Address"),
         &device,
         streamer_config,
     )

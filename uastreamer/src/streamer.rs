@@ -65,7 +65,7 @@ pub enum Direction {
 /// The Receiver Adapter receives the data and outputs it to the specified device
 pub trait StreamComponent {
     fn construct<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static>(
-        target: net::Ipv4Addr,
+        target: net::SocketAddr,
         device: &cpal::Device,
         streamer_config: StreamerConfig,
     ) -> anyhow::Result<Box<Self>>;
@@ -299,7 +299,7 @@ pub struct Streamer {
 impl Streamer {
     pub fn from_sample_format(
         format: cpal::SampleFormat,
-        target: net::Ipv4Addr,
+        target: net::SocketAddr,
         device: &cpal::Device,
         streamer_config: StreamerConfig,
     ) -> anyhow::Result<Box<Self>> {
@@ -322,7 +322,7 @@ impl Streamer {
 
 impl StreamComponent for Streamer {
     fn construct<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static>(
-        target: net::Ipv4Addr,
+        target: net::SocketAddr,
         device: &cpal::Device,
         streamer_config: StreamerConfig,
     ) -> Result<Box<Self>, anyhow::Error> {
@@ -339,7 +339,7 @@ impl StreamComponent for Streamer {
         // Start CPAL Stream and also start UDP Thread
         let (_stream, _udp_loop) = match streamer_config.direction {
             Direction::Sender => {
-                let socket = UdpSocket::bind("0.0.0.0:0")?;
+                let socket = UdpSocket::bind(target)?;
                 socket.connect(format!("{}:{}", target, streamer_config.port))?;
 
                 #[cfg(debug_assertions)]

@@ -72,7 +72,7 @@ fn main() -> anyhow::Result<()> {
 
     if let Some(target_server) = args.target_server {
         let sender = Streamer::construct::<f32>(
-            Ipv4Addr::from_str(&target_server).expect("Invalid Host Address"),
+            std::net::SocketAddr::from_str(&target_server).expect("Invalid Host Address"),
             &device,
             streamer_config,
         )
