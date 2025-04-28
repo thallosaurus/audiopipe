@@ -101,15 +101,33 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'tcp'",
+            "name": "Debug executable 'sender_tcp'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=tcp",
+                    "--bin=sender_tcp",
                     "--package=uastreamer"
                 ],
                 "filter": {
-                    "name": "tcp",
+                    "name": "sender_tcp",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'receiver_tcp'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=receiver_tcp",
+                    "--package=uastreamer"
+                ],
+                "filter": {
+                    "name": "receiver_tcp",
                     "kind": "bin"
                 }
             },

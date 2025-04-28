@@ -6,7 +6,7 @@ use cpal::{
     traits::{DeviceTrait, HostTrait},
 };
 use uastreamer::{
-    args::ReceiverCliArgs, enumerate, search_device, search_for_host, streamer::{self, StreamComponent, Streamer, StreamerConfig}, tui::tui, DEFAULT_PORT, SENDER_BUFFER_SIZE
+    args::ReceiverCliArgs, enumerate, search_device, search_for_host, streamer::{self, StreamComponent, Streamer}, streamer_config::StreamerConfig, tui::tui, DEFAULT_PORT, SENDER_BUFFER_SIZE
 };
 
 /// Main entrypoint for the receiver
@@ -81,6 +81,7 @@ fn main() -> anyhow::Result<()> {
         streamer_config,
     )
     .unwrap();
+
     if args.ui {
         tui(
             streamer::Direction::Receiver,

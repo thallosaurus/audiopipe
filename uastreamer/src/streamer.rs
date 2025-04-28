@@ -21,7 +21,7 @@ use ringbuf::{
 };
 
 use crate::{
-    control::TcpControlFlow, create_wav_writer, splitter::{ChannelMerger, ChannelSplitter}, write_debug, DebugWavWriter
+    control::TcpControlFlow, create_wav_writer, splitter::{ChannelMerger, ChannelSplitter}, streamer_config::StreamerConfig, write_debug, DebugWavWriter
 };
 
 /// Stats which get sent after each UDP Event
@@ -51,18 +51,6 @@ pub struct CpalStats {
 pub enum Direction {
     Sender,
     Receiver,
-}
-
-#[derive(Clone)]
-pub struct StreamerConfig {
-    pub direction: Direction,
-    pub cpal_config: cpal::StreamConfig,
-    pub buffer_size: usize,
-    pub channel_count: ChannelCount,
-    pub send_network_stats: bool,
-    pub send_cpal_stats: bool,
-    pub selected_channels: Vec<usize>,
-    pub port: u16
 }
 
 /// Trait that defines the sender/receiver adapter.
@@ -464,12 +452,19 @@ impl StreamComponent for Streamer {
     }
 }
 
-impl TcpControlFlow for Streamer {
-    fn start_stream(&self) {
-        todo!()
+/*impl TcpControlFlow for Streamer {
+    fn start_stream(&self, streamer_config: StreamerConfig, device: Device) -> u16 {
+
+        /*Streamer::construct::<f32>(
+            Ipv4Addr::from_str(&target_server).expect("Invalid Host Address"),
+            &device,
+            streamer_config,
+        )
+        .unwrap()*/
+        0
     }
 
-    fn connect_to_stream(&self) {
+    fn connect_to_stream(&self, streamer_config: StreamerConfig) {
         todo!()
     }
-}
+}*/
