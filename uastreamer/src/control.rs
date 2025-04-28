@@ -12,6 +12,8 @@ use crate::{
     streamer_config::StreamerConfig,
 };
 
+/// Provisorial Struct to initialize the TCP Control Flow
+/// TODO: Make it all trait and implement a single App-like Struct
 pub struct TcpCommunication {
     pub direction: Direction,
 }
@@ -46,6 +48,8 @@ impl TcpControlFlow for TcpCommunication {
         device: Device,
         target: &str,
     ) -> Box<Streamer> {
+        // TODO Implement more data types
+        // locked to f32 for now
         Streamer::construct::<f32>(
             Ipv4Addr::from_str(&target).expect("Invalid Host Address"),
             &device,
@@ -64,10 +68,12 @@ impl TcpControlFlow for TcpCommunication {
 /// the Stream and sends back an [TcpControlState::Endpoint] Packet containing
 /// the Port for the started stream.
 pub trait TcpControlFlow {
+    /// Helper function to create a new TcpListener
     fn create_new_tcp_listener(addr: &str) -> std::io::Result<TcpListener> {
         TcpListener::bind(addr)
     }
 
+    /// Helper function to create a new TcpStream
     fn create_new_tcp_stream(addr: &str) -> std::io::Result<TcpStream> {
         TcpStream::connect(addr)
     }
@@ -75,6 +81,7 @@ pub trait TcpControlFlow {
     /// This method gets called to start the udp stream
     fn start_stream(&self, config: StreamerConfig, device: Device, target: &str) -> Box<Streamer>;
 
+    /// Read from a given TcpStream with a BufReader
     fn read_buffer(stream: &mut TcpStream) -> std::io::Result<TcpControlPacket> {
         let mut reader = BufReader::new(stream);
 
@@ -88,6 +95,7 @@ pub trait TcpControlFlow {
         Ok(json)
     }
 
+    /// Writes to the specified TcpStream using a BufWriter
     fn write_buffer(stream: &TcpStream, packet: TcpControlPacket) -> std::io::Result<()> {
         let mut buf_writer = BufWriter::new(stream);
 
@@ -99,6 +107,7 @@ pub trait TcpControlFlow {
         Ok(())
     }
 
+    /// This is the loop that gets called when the mode is set to [Direction::Sender]
     fn sender_loop(
         &self,
         stream: &mut TcpStream,
@@ -124,6 +133,8 @@ pub trait TcpControlFlow {
             TcpControlState::Endpoint(e) => {
                 println!("Connecting to port {}", e);
 
+                // TODO implement packet validation
+
                 #[cfg(not(debug_assertions))]
                 let streamer = self.start_stream(streamer_config, device);
 
@@ -135,6 +146,7 @@ pub trait TcpControlFlow {
                     match packet.state {
                         TcpControlState::Error => {
                             println!("tcp error occurred");
+                            break;
                         }
                         TcpControlState::Disconnect => {
                             println!("Disconnected");
@@ -143,13 +155,21 @@ pub trait TcpControlFlow {
                         _ => todo!(),
                     }
                 }
+                let packet = TcpControlPacket {
+                    state: TcpControlState::Disconnect,
+                };
+                Self::write_buffer(stream, packet)?;
             }
-            _ => todo!(),
+            _ => {
+                // TODO implement error handling here
+                todo!()
+            },
         }
 
         Ok(())
     }
 
+    /// This is the loop that gets called when the mode is set to [Direction::Receiver]
     fn receiver_loop(
         &self,
         listener: TcpListener,
@@ -192,8 +212,7 @@ pub trait TcpControlFlow {
                 // send back endpoint
                 Self::write_buffer(&stream, packet)?;
 
-                // then we have to wait until the connection is closed or interrupted
-
+                // then we have to wait until the connection is closed or dropped
                 loop {
                     let packet = Self::read_buffer(&mut stream)?;
                     dbg!(&packet);

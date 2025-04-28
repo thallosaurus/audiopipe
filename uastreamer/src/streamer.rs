@@ -12,7 +12,8 @@ use std::{
 
 use bytemuck::Pod;
 use cpal::{
-    traits::{DeviceTrait, StreamTrait}, ChannelCount, InputCallbackInfo, OutputCallbackInfo, Sample, Stream, StreamConfig
+    ChannelCount, InputCallbackInfo, OutputCallbackInfo, Sample, Stream, StreamConfig,
+    traits::{DeviceTrait, StreamTrait},
 };
 
 use ringbuf::{
@@ -21,7 +22,12 @@ use ringbuf::{
 };
 
 use crate::{
-    control::TcpControlFlow, create_wav_writer, splitter::{ChannelMerger, ChannelSplitter}, streamer_config::StreamerConfig, write_debug, DebugWavWriter
+    DebugWavWriter,
+    control::TcpControlFlow,
+    create_wav_writer,
+    splitter::{ChannelMerger, ChannelSplitter},
+    streamer_config::StreamerConfig,
+    write_debug,
 };
 
 /// Stats which get sent after each UDP Event
@@ -61,12 +67,7 @@ pub trait StreamComponent {
     fn construct<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static>(
         target: net::Ipv4Addr,
         device: &cpal::Device,
-        //config: &cpal::StreamConfig,
-        //selected_channels: Vec<usize>,
-        //buf_size: usize,
-        //send_stats: bool,
-
-        streamer_config: StreamerConfig
+        streamer_config: StreamerConfig,
     ) -> anyhow::Result<Box<Self>>;
 
     /// Appends the given Samples from CPAL callback to the buffer
@@ -75,18 +76,17 @@ pub trait StreamComponent {
         data: &[T],
         info: &InputCallbackInfo,
         output: &mut HeapProd<T>,
-        //channel_count: ChannelCount,
-        //selected_channels: Vec<usize>,
         writer: &mut Option<DebugWavWriter>,
         stats: Arc<Sender<CpalStats>>,
-        //send_stats: bool,
     ) -> usize {
-        //let bytes = bytemuck::cast_slice(data);
-        //let appended = output.push_slice(bytes);
-
         let mut consumed = 0;
 
-        let splitter = ChannelSplitter::new(data, streamer_config.selected_channels.clone(), streamer_config.channel_count).unwrap();
+        let splitter = ChannelSplitter::new(
+            data,
+            streamer_config.selected_channels.clone(),
+            streamer_config.channel_count,
+        )
+        .unwrap();
 
         // Iterate through the input buffer and save data
         // TODO NOTE: The size of the slice is buffer_size * channelCount,
@@ -137,8 +137,13 @@ pub trait StreamComponent {
         // Pops the oldest element from the front and writes it to the sound buffer
         // consuming only the bytes needed
 
-        let mut merger =
-            ChannelMerger::new(input, &streamer_config.selected_channels, streamer_config.channel_count, output.len()).unwrap();
+        let mut merger = ChannelMerger::new(
+            input,
+            &streamer_config.selected_channels,
+            streamer_config.channel_count,
+            output.len(),
+        )
+        .unwrap();
 
         for sample in output.iter_mut() {
             let s = merger.next();
@@ -252,14 +257,16 @@ pub trait StreamComponent {
                     let post_occupied_buffer = buffer_producer.occupied_len();
 
                     // Send Statistics about the current operation to the stats channel
-                    stats
-                        .send(UdpStats {
-                            sent: None,
-                            received: Some(received),
-                            pre_occupied_buffer,
-                            post_occupied_buffer,
-                        })
-                        .unwrap();
+                    if streamer_config.send_network_stats {
+                        stats
+                            .send(UdpStats {
+                                sent: None,
+                                received: Some(received),
+                                pre_occupied_buffer,
+                                post_occupied_buffer,
+                            })
+                            .unwrap();
+                    }
                 }
                 Err(e) => eprintln!("UDP receive error: {:?}", e),
             }
@@ -294,60 +301,20 @@ impl Streamer {
         format: cpal::SampleFormat,
         target: net::Ipv4Addr,
         device: &cpal::Device,
-        streamer_config: StreamerConfig
+        streamer_config: StreamerConfig,
     ) -> anyhow::Result<Box<Self>> {
         // TODO Implement sample conversion for debug hound writer
         Ok(match format {
-            cpal::SampleFormat::I16 => Self::construct::<i16>(
-                target,
-                device,
-                streamer_config
-            ),
-            cpal::SampleFormat::U16 => Self::construct::<u16>(
-                target,
-                device,
-                streamer_config
-            ),
-            cpal::SampleFormat::I8 => Self::construct::<i8>(
-                target,
-                device,
-                streamer_config
-            ),
-            cpal::SampleFormat::I32 => Self::construct::<i32>(
-                target,
-                device,
-                streamer_config
-            ),
-            cpal::SampleFormat::I64 => Self::construct::<i64>(
-                target,
-                device,
-                streamer_config
-            ),
-            cpal::SampleFormat::U8 => Self::construct::<u8>(
-                target,
-                device,
-                streamer_config
-            ),
-            cpal::SampleFormat::U32 => Self::construct::<u32>(
-                target,
-                device,
-                streamer_config
-            ),
-            cpal::SampleFormat::U64 => Self::construct::<u64>(
-                target,
-                device,
-                streamer_config
-            ),
-            cpal::SampleFormat::F64 => Self::construct::<f64>(
-                target,
-                device,
-                streamer_config
-            ),
-            cpal::SampleFormat::F32 => Self::construct::<f32>(
-                target,
-                device,
-                streamer_config
-            ),
+            cpal::SampleFormat::I16 => Self::construct::<i16>(target, device, streamer_config),
+            cpal::SampleFormat::U16 => Self::construct::<u16>(target, device, streamer_config),
+            cpal::SampleFormat::I8 => Self::construct::<i8>(target, device, streamer_config),
+            cpal::SampleFormat::I32 => Self::construct::<i32>(target, device, streamer_config),
+            cpal::SampleFormat::I64 => Self::construct::<i64>(target, device, streamer_config),
+            cpal::SampleFormat::U8 => Self::construct::<u8>(target, device, streamer_config),
+            cpal::SampleFormat::U32 => Self::construct::<u32>(target, device, streamer_config),
+            cpal::SampleFormat::U64 => Self::construct::<u64>(target, device, streamer_config),
+            cpal::SampleFormat::F64 => Self::construct::<f64>(target, device, streamer_config),
+            cpal::SampleFormat::F32 => Self::construct::<f32>(target, device, streamer_config),
             _ => panic!("Unsupported Sample Format: {:?}", format),
         }?)
     }
@@ -357,7 +324,7 @@ impl StreamComponent for Streamer {
     fn construct<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static>(
         target: net::Ipv4Addr,
         device: &cpal::Device,
-        streamer_config: StreamerConfig
+        streamer_config: StreamerConfig,
     ) -> Result<Box<Self>, anyhow::Error> {
         let buf = HeapRb::<T>::new((streamer_config.buffer_size as usize) * 2);
         let (mut prod, mut cons) = buf.split();
@@ -384,7 +351,6 @@ impl StreamComponent for Streamer {
                     device.build_input_stream(
                         &streamer_config.cpal_config,
                         move |data: &[T], c| {
-
                             _ = Self::process_input(
                                 &sconfig,
                                 data,
@@ -403,7 +369,8 @@ impl StreamComponent for Streamer {
                 )
             }
             Direction::Receiver => {
-                let socket = UdpSocket::bind(("0.0.0.0", streamer_config.port)).expect("Failed to bind UDP socket");
+                let socket = UdpSocket::bind(("0.0.0.0", streamer_config.port))
+                    .expect("Failed to bind UDP socket");
 
                 let mut writer = create_wav_writer("receiver_dump".to_owned(), 1, 44100)?;
 

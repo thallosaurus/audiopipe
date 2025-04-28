@@ -35,6 +35,7 @@ pub mod splitter;
 /// Holds everything related to the TCP Communication Channel
 pub mod control;
 
+/// Holds the config struct which gets passed around
 pub mod streamer_config;
 
 /// Enumerate all available devices on the system
