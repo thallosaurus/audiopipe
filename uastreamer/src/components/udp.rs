@@ -43,7 +43,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             }
             Direction::Receiver => {
                 let socket =
-                    UdpSocket::bind(("0.0.0.0:42069", config.port))?;
+                    UdpSocket::bind("0.0.0.0:42069")?;
 
                 Self::udp_receiver_loop(&config, socket, buffer_producer, stats);
             }
