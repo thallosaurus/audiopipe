@@ -36,7 +36,7 @@ use super::{cpal::CpalStats, udp::UdpStats};
 ///
 /// Sender: Captures from an audio input stream and sends it over the network
 /// Receiver: Receives from the network and outputs it to a audio output stream
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Direction {
     Sender,
     Receiver,

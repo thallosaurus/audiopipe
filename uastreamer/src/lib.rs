@@ -1,8 +1,20 @@
-use std::{fs::{create_dir_all, File}, io::BufWriter, str::FromStr, sync::mpsc::Receiver, thread::JoinHandle, time::SystemTime};
+use std::{
+    fs::{File, create_dir_all},
+    io::BufWriter,
+    str::FromStr,
+    sync::mpsc::Receiver,
+    thread::JoinHandle,
+    time::SystemTime,
+};
 
 use bytemuck::Pod;
 
-use components::{control::TcpControlFlow, cpal::CpalStats, streamer::{self, Direction, StreamComponent, Streamer}, udp::UdpStats};
+use components::{
+    control::TcpControlFlow,
+    cpal::CpalStats,
+    streamer::{self, Direction, StreamComponent, Streamer},
+    udp::UdpStats,
+};
 use cpal::{traits::*, *};
 use hound::WavWriter;
 
@@ -22,7 +34,6 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Re-export of the Cargo Package Description
 pub const PKG_DESC: &str = env!("CARGO_PKG_DESCRIPTION");
-
 
 /// Holds all things related to the statistics debug window
 pub mod tui;
@@ -53,13 +64,12 @@ pub fn enumerate(direction: Direction, host: &Host) -> anyhow::Result<()> {
                     device.name().unwrap_or("Unknown Device".to_string())
                 );
                 if let Ok(config) = device.supported_input_configs() {
-        
                     for supported_config in config.into_iter() {
                         let buf_size = match supported_config.buffer_size() {
                             SupportedBufferSize::Range { min, max } => format!("{}/{}", min, max),
                             SupportedBufferSize::Unknown => format!("Unknown"),
                         };
-                        
+
                         println!(
                             "   - Buffer Min/Max: {}, Channels: {}, Sample Format: {}, Sample Rate: {:?}",
                             buf_size,
@@ -72,20 +82,20 @@ pub fn enumerate(direction: Direction, host: &Host) -> anyhow::Result<()> {
                     println!("   <not supported>");
                 }
                 println!("");
-            },
+            }
             Direction::Receiver => {
                 println!(
                     " - {:?} (Output)",
                     device.name().unwrap_or("Unknown Device".to_string())
                 );
-        
+
                 if let Ok(conf) = device.supported_output_configs() {
                     for supported_config in conf.into_iter() {
                         let buf_size = match supported_config.buffer_size() {
                             SupportedBufferSize::Range { min, max } => format!("{}/{}", min, max),
                             SupportedBufferSize::Unknown => format!("Unknown"),
                         };
-        
+
                         println!(
                             "   - Buffer Min/Max: {}, Channels: {}, Sample Format: {}, Sample Rate: {:?}",
                             buf_size,
@@ -98,14 +108,14 @@ pub fn enumerate(direction: Direction, host: &Host) -> anyhow::Result<()> {
                     println!("   <not supported>")
                 }
                 println!("");
-            },
+            }
         };
     }
 
     Ok(())
 }
 
-/// Searches for the specified Audio [cpal::HostId] encoded as string 
+/// Searches for the specified Audio [cpal::HostId] encoded as string
 pub fn search_for_host(name: &str) -> anyhow::Result<Host> {
     let host_id = cpal::available_hosts()
         .into_iter()
@@ -143,7 +153,10 @@ pub fn create_wav_writer(
     create_dir_all("dump/")?;
 
     #[cfg(debug_assertions)]
-    let writer = Ok(Some(hound::WavWriter::create(format!("dump/{}_{}.wav", timestamp.as_secs(), filename), spec)?));
+    let writer = Ok(Some(hound::WavWriter::create(
+        format!("dump/{}_{}.wav", timestamp.as_secs(), filename),
+        spec,
+    )?));
 
     #[cfg(not(debug_assertions))]
     let writer = Ok(None);
@@ -151,7 +164,10 @@ pub fn create_wav_writer(
     writer
 }
 
-pub fn write_debug<T: cpal::SizedSample + Send + Pod + Default + 'static>(writer: &mut Option<DebugWavWriter>, sample: T) {
+pub fn write_debug<T: cpal::SizedSample + Send + Pod + Default + 'static>(
+    writer: &mut Option<DebugWavWriter>,
+    sample: T,
+) {
     if let Some(writer) = writer {
         let s: f32 = bytemuck::cast(sample);
         writer.write_sample(s).unwrap();
@@ -168,13 +184,23 @@ struct App {
 }
 
 impl TcpControlFlow for App {
-    fn start_stream(&self, config: StreamerConfig, device: Device, target: &str) {
+    fn start_stream(
+        &self,
+        config: StreamerConfig,
+        device: Device,
+        target: &str,
+    ) -> Result<(), anyhow::Error> {
         Streamer::construct::<f32>(
             std::net::SocketAddr::from_str(&target).expect("Invalid Host Address"),
             &device,
             config,
         )
         .unwrap();
+        Ok(())
+    }
+    
+    fn get_tcp_direction(&self) -> Direction {
+        self.config.direction
     }
 }
 
@@ -201,7 +227,5 @@ mod tests {
     use super::*;
 
     #[test]
-    fn x_test_transfer() {
-
-    }
+    fn x_test_transfer() {}
 }

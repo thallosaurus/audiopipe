@@ -17,11 +17,23 @@ pub struct UdpStats {
 }
 
 pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
-    fn construct_udp_stream(direction: Direction) {
+    fn construct_udp_stream(&self, direction: Direction, config: StreamerConfig, target: &str) -> anyhow::Result<()> {
         match direction {
-            Direction::Sender => todo!(),
-            Direction::Receiver => todo!(),
+            Direction::Sender => {
+                let socket = UdpSocket::bind(target)?;
+                socket.connect(format!("{}:{}", target, config.port))?;
+
+                self.udp_sender_loop(&config, socket);
+            },
+            Direction::Receiver => {
+                let socket = UdpSocket::bind(("0.0.0.0", config.port))
+                .expect("Failed to bind UDP socket");
+
+                self.udp_receiver_loop(&config, socket);
+            },
         }
+
+        Ok(())
     }
 
     fn udp_get_producer(&self) -> Arc<Mutex<HeapProd<T>>>;
@@ -77,16 +89,20 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
     /// Entry Point for the UDP Receiver Loop
     fn udp_receiver_loop(
+        &self,
         streamer_config: &StreamerConfig,
         socket: UdpSocket,
-        buffer_producer: &mut HeapProd<T>,
-        stats: Sender<UdpStats>,
+        //buffer_producer: &mut HeapProd<T>,
+        //stats: Sender<UdpStats>,
     ) {
         // How big is one byte?
         let byte_size = size_of::<T>();
 
+        let buffer_producer = self.udp_get_producer();
+
         loop {
-            let cap: usize = buffer_producer.capacity().into();
+            let mut prod = buffer_producer.lock().unwrap();
+            let cap: usize = prod.capacity().into();
 
             // create the temporary network buffer needed to capture the network samples
             let mut temp_network_buffer: Box<[u8]> = vec![0u8; cap * byte_size].into_boxed_slice();
@@ -97,18 +113,18 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                     // Convert the buffered network samples to the specified sample format
                     let converted_samples: &[T] = bytemuck::cast_slice(&temp_network_buffer);
 
-                    let pre_occupied_buffer = buffer_producer.occupied_len();
+                    let pre_occupied_buffer = prod.occupied_len();
 
                     // Transfer Samples bytewise
                     for &sample in converted_samples {
                         // TODO implement fell-behind logic here
-                        let _ = buffer_producer.try_push(sample);
+                        let _ = prod.try_push(sample);
                     }
 
-                    let post_occupied_buffer = buffer_producer.occupied_len();
+                    let post_occupied_buffer = prod.occupied_len();
 
                     // Send Statistics about the current operation to the stats channel
-                    if streamer_config.send_network_stats {
+                    /*if streamer_config.send_network_stats {
                         stats
                             .send(UdpStats {
                                 sent: None,
@@ -117,7 +133,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                                 post_occupied_buffer,
                             })
                             .unwrap();
-                    }
+                    }*/
                 }
                 Err(e) => eprintln!("UDP receive error: {:?}", e),
             }

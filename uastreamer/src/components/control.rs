@@ -47,7 +47,7 @@ impl TcpControlFlow for TcpCommunication {
         streamer_config: StreamerConfig,
         device: Device,
         target: &str,
-    ) {
+    ) -> Result<(), anyhow::Error> {
         // TODO Implement more data types
         // locked to f32 for now
         Streamer::construct::<f32>(
@@ -56,6 +56,12 @@ impl TcpControlFlow for TcpCommunication {
             streamer_config,
         )
         .unwrap();
+
+    Ok(())
+    }
+    
+    fn get_tcp_direction(&self) -> Direction {
+        self.direction
     }
 }
 
@@ -78,8 +84,31 @@ pub trait TcpControlFlow {
         TcpStream::connect(addr)
     }
 
+    fn get_tcp_direction(&self) -> Direction;
+
+    fn serve(
+        &self,
+        tcp_addr: &str,
+        streamer_config: StreamerConfig,
+        device: Device,
+    ) -> std::io::Result<()> {
+        match self.get_tcp_direction() {
+            Direction::Sender => {
+                let mut stream = TcpCommunication::create_new_tcp_stream(tcp_addr)?;
+                println!("connecting to {}", tcp_addr);
+                self.sender_loop(tcp_addr, &mut stream, streamer_config, device)?;
+            }
+            Direction::Receiver => {
+                let listener = TcpCommunication::create_new_tcp_listener(tcp_addr)?;
+                println!("listening to {}", tcp_addr);
+                self.receiver_loop(tcp_addr, listener, streamer_config, device)?;
+            }
+        }
+        Ok(())
+    }
+
     /// This method gets called to start the udp stream
-    fn start_stream(&self, config: StreamerConfig, device: Device, target: &str);
+    fn start_stream(&self, config: StreamerConfig, device: Device, target: &str) -> anyhow::Result<()>;
 
     /// Read from a given TcpStream with a BufReader
     fn read_buffer(stream: &mut TcpStream) -> std::io::Result<TcpControlPacket> {
