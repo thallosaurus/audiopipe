@@ -240,7 +240,7 @@ pub trait TcpControlFlow {
 
                 let packet = TcpControlPacket {
                     #[cfg(debug_assertions)]
-                    state: TcpControlState::Endpoint(12345),
+                    state: TcpControlState::Endpoint(42069),
 
                     #[cfg(not(debug_assertions))]
                     state: TcpControlState::Endpoint(42069),
