@@ -171,6 +171,7 @@ pub fn write_debug<T: cpal::SizedSample + Send + Pod + Default + 'static>(
     }
 }
 
+#[deprecated]
 struct App {
     config: StreamerConfig,
     _stream: Stream,

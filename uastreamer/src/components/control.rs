@@ -1,6 +1,6 @@
 use std::{
     io::{BufRead, BufReader, BufWriter, Write},
-    net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream},
+    net::{SocketAddr, TcpListener, TcpStream},
     str::FromStr, time::Duration,
 };
 
@@ -13,7 +13,7 @@ use crate::{
 };
 
 /// Provisorial Struct to initialize the TCP Control Flow
-/// TODO: Make it all trait and implement a single App-like Struct
+#[deprecated]
 pub struct TcpCommunication {
     pub direction: Direction,
 }

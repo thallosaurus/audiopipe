@@ -271,6 +271,7 @@ pub trait StreamComponent {
 
 /// Struct that holds the Streamer.
 /// See [StreamComponent] for more information about how the streamer works
+#[deprecated]
 pub struct Streamer {
     config: StreamerConfig,
     _stream: Stream,
