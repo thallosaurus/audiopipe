@@ -41,7 +41,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             }
             Direction::Receiver => {
                 let socket =
-                    UdpSocket::bind(("0.0.0.0", config.port)).expect("Failed to bind UDP socket");
+                    UdpSocket::bind(("0.0.0.0:42069", config.port)).expect("Failed to bind UDP socket");
 
                 Self::udp_receiver_loop(&config, socket, buffer_producer, stats);
             }
