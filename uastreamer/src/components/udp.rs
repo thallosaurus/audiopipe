@@ -31,17 +31,19 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         buffer_consumer: Arc<Mutex<HeapCons<T>>>,
         buffer_producer: Arc<Mutex<HeapProd<T>>>,
         stats: Sender<UdpStats>,
-    ) -> anyhow::Result<()> {
+    ) -> std::io::Result<()> {
         match direction {
             Direction::Sender => {
                 let socket = UdpSocket::bind(target)?;
-                socket.connect(format!("{}:{}", target, config.port))?;
+                let f = format!("{}:{}", target, config.port);
+                println!("Connecting UDP to {}", f);
+                socket.connect(f)?;
 
                 Self::udp_sender_loop(&config, socket, buffer_consumer, stats);
             }
             Direction::Receiver => {
                 let socket =
-                    UdpSocket::bind(("0.0.0.0:42069", config.port)).expect("Failed to bind UDP socket");
+                    UdpSocket::bind(("0.0.0.0:42069", config.port))?;
 
                 Self::udp_receiver_loop(&config, socket, buffer_producer, stats);
             }
