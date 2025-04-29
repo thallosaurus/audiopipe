@@ -185,12 +185,12 @@ impl TcpControlFlow for App {
     fn start_stream(
         &self,
         config: StreamerConfig,
-        device: Device,
+        device: Arc<Mutex<Device>>,
         target: SocketAddr,
     ) -> Result<(), anyhow::Error> {
         Streamer::construct::<f32>(
             target,
-            &device,
+            device,
             config,
         )
         .unwrap();
@@ -205,7 +205,7 @@ impl TcpControlFlow for App {
 impl StreamComponent for App {
     fn construct<T: cpal::SizedSample + Send + Pod + Default + std::fmt::Debug + 'static>(
         target: std::net::SocketAddr,
-        device: &cpal::Device,
+        device: Arc<Mutex<cpal::Device>>,
         streamer_config: StreamerConfig,
     ) -> anyhow::Result<Box<Self>> {
         todo!()
@@ -294,7 +294,7 @@ impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> UdpStreamFlo
 impl<T> TcpControlFlow for AppTest<T> where 
     T: cpal::SizedSample + Send + Pod + Default + Debug + 'static
 {
-    fn start_stream(&self, config: StreamerConfig, device: cpal::Device, target: SocketAddr) -> anyhow::Result<()> {
+    fn start_stream(&self, config: StreamerConfig, device: Arc<Mutex<cpal::Device>>, target: SocketAddr) -> anyhow::Result<()> {
         //start video capture and udp sender here
         let dir = config.direction;
         {
@@ -304,6 +304,7 @@ impl<T> TcpControlFlow for AppTest<T> where
             
             let sconfig = config.clone();
             self.pool.execute(move || {
+                let device = device.lock().unwrap();
                 let stream = Self::construct_stream(dir, &device, sconfig, stats, prod, cons).unwrap();
                 loop {
                     //block

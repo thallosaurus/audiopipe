@@ -4,8 +4,7 @@ use std::{
     io::BufWriter,
     net::{self, UdpSocket},
     sync::{
-        Arc,
-        mpsc::{Receiver, Sender, channel},
+        mpsc::{channel, Receiver, Sender}, Arc, Mutex
     },
     thread::JoinHandle,
 };
@@ -50,7 +49,7 @@ pub enum Direction {
 pub trait StreamComponent {
     fn construct<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static>(
         target: net::SocketAddr,
-        device: &cpal::Device,
+        device: Arc<Mutex<cpal::Device>>,
         streamer_config: StreamerConfig,
     ) -> anyhow::Result<Box<Self>>;
 
@@ -282,7 +281,7 @@ pub struct Streamer {
 }
 
 impl Streamer {
-    pub fn from_sample_format(
+    /*pub fn from_sample_format(
         format: cpal::SampleFormat,
         target: net::SocketAddr,
         device: &cpal::Device,
@@ -302,13 +301,13 @@ impl Streamer {
             cpal::SampleFormat::F32 => Self::construct::<f32>(target, device, streamer_config),
             _ => panic!("Unsupported Sample Format: {:?}", format),
         }?)
-    }
+    }*/
 }
 
 impl StreamComponent for Streamer {
     fn construct<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static>(
         target: net::SocketAddr,
-        device: &cpal::Device,
+        device: Arc<Mutex<cpal::Device>>,
         streamer_config: StreamerConfig,
     ) -> Result<Box<Self>, anyhow::Error> {
         let buf = HeapRb::<T>::new((streamer_config.buffer_size as usize) * 2);
@@ -321,14 +320,16 @@ impl StreamComponent for Streamer {
 
         let stream_config_for_struct = streamer_config.clone();
 
+        let device = device.lock().unwrap();
+
         // Start CPAL Stream and also start UDP Thread
         let (_stream, _udp_loop) = match streamer_config.direction {
             Direction::Sender => {
                 let socket = UdpSocket::bind(target)?;
                 socket.connect(format!("{}:{}", target, streamer_config.port))?;
 
-                #[cfg(debug_assertions)]
                 let mut writer = create_wav_writer("sender_dump".to_owned(), 1, 44100)?;
+                
 
                 let sconfig = streamer_config.clone();
                 let cpal_tx = cpal_arc.clone();
