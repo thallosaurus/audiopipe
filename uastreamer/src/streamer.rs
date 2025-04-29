@@ -63,6 +63,7 @@ pub enum Direction {
 ///
 /// The Sender Adapter simply copies the input from the specified device to a ringbuffer and sends it over the network
 /// The Receiver Adapter receives the data and outputs it to the specified device
+#[deprecated]
 pub trait StreamComponent {
     fn construct<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static>(
         target: net::SocketAddr,
