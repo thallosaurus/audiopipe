@@ -1,13 +1,20 @@
 use bytemuck::Pod;
-use cpal::{traits::DeviceTrait, BuildStreamError, InputCallbackInfo, OutputCallbackInfo, Sample, Stream};
-use ringbuf::{HeapCons, HeapProd, traits::Producer};
 use core::net;
+use cpal::{
+    BuildStreamError, InputCallbackInfo, OutputCallbackInfo, Sample, Stream, traits::DeviceTrait,
+};
+use ringbuf::{HeapCons, HeapProd, traits::Producer};
 use std::{
     fmt::Debug,
-    sync::{mpsc::Sender, Arc, Mutex},
+    sync::{Arc, Mutex, mpsc::Sender},
 };
 
-use crate::{create_wav_writer, splitter::{ChannelMerger, ChannelSplitter}, streamer_config::StreamerConfig, write_debug, DebugWavWriter};
+use crate::{
+    DebugWavWriter, create_wav_writer,
+    splitter::{ChannelMerger, ChannelSplitter},
+    streamer_config::StreamerConfig,
+    write_debug,
+};
 
 use super::streamer::Direction;
 
@@ -29,30 +36,33 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
     fn get_cpal_stats_sender(&self) -> Sender<CpalStats>;
 
     fn construct_stream(
-        &self,
         direction: Direction,
         device: &cpal::Device,
         config: StreamerConfig,
+        stats: Sender<CpalStats>,
+        prod: Arc<Mutex<HeapProd<T>>>,
+        cons: Arc<Mutex<HeapCons<T>>>
     ) -> anyhow::Result<Stream> {
         let mut writer = create_wav_writer("sender_dump".to_owned(), 1, 44100)?;
 
         let cpal_config = config.cpal_config.clone();
+        //let stats = self.get_cpal_stats_sender();
+
         Ok(match direction {
             Direction::Sender => {
-                
-                let output = self.get_producer();
+//                let output = self.get_producer();
 
                 device.build_input_stream(
                     &cpal_config,
                     move |data: &[T], info| {
                         // Stream Callback
-                        let mut output = output.lock().unwrap();
+                        let mut prod = prod.lock().unwrap();
 
                         //let config = config.clone();
                         let consumed =
-                            Self::process_input(&config, data, info, output.as_mut(), &mut writer);
+                            Self::process_input(&config, data, info, prod.as_mut(), &mut writer);
 
-                        /*if config.send_cpal_stats {
+                        if config.send_cpal_stats {
                             stats
                                 .send(CpalStats {
                                     consumed: Some(consumed),
@@ -61,14 +71,14 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                                     input_info: Some(info.clone()),
                                 })
                                 .unwrap();
-                        }*/
+                        }
                     },
                     |err| eprintln!("Stream error: {}", err),
                     None,
                 )?
             }
             Direction::Receiver => {
-                let cons = self.get_consumer();
+                //let cons = self.get_consumer();
 
                 device.build_output_stream(
                     &cpal_config,
@@ -85,7 +95,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                         );
 
                         // Sends stats about the current operation back to the front
-                        /*if config.send_cpal_stats {
+                        if config.send_cpal_stats {
                             stats
                                 .send(CpalStats {
                                     consumed: Some(consumed),
@@ -94,7 +104,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                                     output_info: Some(info.clone()),
                                 })
                                 .unwrap();
-                        }*/
+                        }
                     },
                     |err| eprintln!("Stream error: {}", err),
                     None,

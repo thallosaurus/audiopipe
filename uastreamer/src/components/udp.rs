@@ -1,7 +1,14 @@
-use std::{fmt::Debug, net::UdpSocket, sync::{mpsc::Sender, Arc, Mutex}};
+use std::{
+    fmt::Debug,
+    net::UdpSocket,
+    sync::{Arc, Mutex, mpsc::Sender},
+};
 
 use bytemuck::Pod;
-use ringbuf::{traits::{Consumer, Observer, Producer}, HeapCons, HeapProd};
+use ringbuf::{
+    HeapCons, HeapProd,
+    traits::{Consumer, Observer, Producer},
+};
 
 use crate::streamer_config::StreamerConfig;
 
@@ -17,20 +24,27 @@ pub struct UdpStats {
 }
 
 pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
-    fn construct_udp_stream(&self, direction: Direction, config: StreamerConfig, target: &str) -> anyhow::Result<()> {
+    fn construct_udp_stream(
+        direction: Direction,
+        config: StreamerConfig,
+        target: &str,
+        buffer_consumer: Arc<Mutex<HeapCons<T>>>,
+        buffer_producer: Arc<Mutex<HeapProd<T>>>,
+        stats: Sender<UdpStats>,
+    ) -> anyhow::Result<()> {
         match direction {
             Direction::Sender => {
                 let socket = UdpSocket::bind(target)?;
                 socket.connect(format!("{}:{}", target, config.port))?;
 
-                self.udp_sender_loop(&config, socket);
-            },
+                Self::udp_sender_loop(&config, socket, buffer_consumer, stats);
+            }
             Direction::Receiver => {
-                let socket = UdpSocket::bind(("0.0.0.0", config.port))
-                .expect("Failed to bind UDP socket");
+                let socket =
+                    UdpSocket::bind(("0.0.0.0", config.port)).expect("Failed to bind UDP socket");
 
-                self.udp_receiver_loop(&config, socket);
-            },
+                Self::udp_receiver_loop(&config, socket, buffer_producer, stats);
+            }
         }
 
         Ok(())
@@ -38,18 +52,16 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
     fn udp_get_producer(&self) -> Arc<Mutex<HeapProd<T>>>;
     fn udp_get_consumer(&self) -> Arc<Mutex<HeapCons<T>>>;
+    fn get_udp_stats_sender(&self) -> Sender<UdpStats>;
 
     /// Entry Point for the UDP Buffer Sender.
     /// Sends the buffer when it is full
     fn udp_sender_loop(
-        &self,
         streamer_config: &StreamerConfig,
         socket: UdpSocket,
-        //buffer_consumer: &mut HeapCons<T>,
-        //stats: Sender<UdpStats>,
+        buffer_consumer: Arc<Mutex<HeapCons<T>>>,
+        stats: Sender<UdpStats>,
     ) {
-        let buffer_consumer = self.udp_get_consumer();
-
         loop {
             let mut buffer_consumer = buffer_consumer.lock().unwrap();
             // Only send the network package if the network buffer is full to avoid partial sends
@@ -73,7 +85,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                 let _ = socket.send(udp_packet);
 
                 // Send statistics to the channel
-                /*if streamer_config.send_network_stats {
+                if streamer_config.send_network_stats {
                     stats
                         .send(UdpStats {
                             sent: Some(udp_packet.len()),
@@ -82,23 +94,24 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                             post_occupied_buffer,
                         })
                         .unwrap();
-                }*/
+                }
             }
         }
     }
 
     /// Entry Point for the UDP Receiver Loop
     fn udp_receiver_loop(
-        &self,
         streamer_config: &StreamerConfig,
         socket: UdpSocket,
-        //buffer_producer: &mut HeapProd<T>,
-        //stats: Sender<UdpStats>,
+        buffer_producer: Arc<Mutex<HeapProd<T>>>,
+        stats: Sender<UdpStats>,
     ) {
         // How big is one byte?
         let byte_size = size_of::<T>();
 
-        let buffer_producer = self.udp_get_producer();
+        //let buffer_producer = self.udp_get_producer();
+
+        //let stats = self.get_udp_stats_sender();
 
         loop {
             let mut prod = buffer_producer.lock().unwrap();
@@ -124,7 +137,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                     let post_occupied_buffer = prod.occupied_len();
 
                     // Send Statistics about the current operation to the stats channel
-                    /*if streamer_config.send_network_stats {
+                    if streamer_config.send_network_stats {
                         stats
                             .send(UdpStats {
                                 sent: None,
@@ -133,7 +146,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                                 post_occupied_buffer,
                             })
                             .unwrap();
-                    }*/
+                    }
                 }
                 Err(e) => eprintln!("UDP receive error: {:?}", e),
             }

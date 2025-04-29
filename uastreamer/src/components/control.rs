@@ -1,7 +1,7 @@
 use std::{
     io::{BufRead, BufReader, BufWriter, Write},
-    net::{Ipv4Addr, TcpListener, TcpStream},
-    str::FromStr,
+    net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream},
+    str::FromStr, time::Duration,
 };
 
 use cpal::Device;
@@ -21,7 +21,7 @@ pub struct TcpCommunication {
 impl TcpCommunication {
     pub fn serve(
         &self,
-        tcp_addr: &str,
+        tcp_addr: SocketAddr,
         streamer_config: StreamerConfig,
         device: Device,
     ) -> std::io::Result<()> {
@@ -46,12 +46,12 @@ impl TcpControlFlow for TcpCommunication {
         &self,
         streamer_config: StreamerConfig,
         device: Device,
-        target: &str,
+        target: SocketAddr,
     ) -> Result<(), anyhow::Error> {
         // TODO Implement more data types
         // locked to f32 for now
         Streamer::construct::<f32>(
-            std::net::SocketAddr::from_str(&target).expect("Invalid Host Address"),
+            target,
             &device,
             streamer_config,
         )
@@ -75,13 +75,13 @@ impl TcpControlFlow for TcpCommunication {
 /// the Port for the started stream.
 pub trait TcpControlFlow {
     /// Helper function to create a new TcpListener
-    fn create_new_tcp_listener(addr: &str) -> std::io::Result<TcpListener> {
+    fn create_new_tcp_listener(addr: SocketAddr) -> std::io::Result<TcpListener> {
         TcpListener::bind(addr)
     }
 
     /// Helper function to create a new TcpStream
-    fn create_new_tcp_stream(addr: &str) -> std::io::Result<TcpStream> {
-        TcpStream::connect(addr)
+    fn create_new_tcp_stream(addr: SocketAddr) -> std::io::Result<TcpStream> {
+        TcpStream::connect_timeout(&addr, Duration::from_secs(5))
     }
 
     fn get_tcp_direction(&self) -> Direction;
@@ -92,23 +92,24 @@ pub trait TcpControlFlow {
         streamer_config: StreamerConfig,
         device: Device,
     ) -> std::io::Result<()> {
+        let target = SocketAddr::from_str(tcp_addr).unwrap();
         match self.get_tcp_direction() {
             Direction::Sender => {
-                let mut stream = TcpCommunication::create_new_tcp_stream(tcp_addr)?;
+                let mut stream = TcpCommunication::create_new_tcp_stream(target)?;
                 println!("connecting to {}", tcp_addr);
-                self.sender_loop(tcp_addr, &mut stream, streamer_config, device)?;
+                self.sender_loop(target, &mut stream, streamer_config, device)?;
             }
             Direction::Receiver => {
-                let listener = TcpCommunication::create_new_tcp_listener(tcp_addr)?;
+                let listener = TcpCommunication::create_new_tcp_listener(target)?;
                 println!("listening to {}", tcp_addr);
-                self.receiver_loop(tcp_addr, listener, streamer_config, device)?;
+                self.receiver_loop(target, listener, streamer_config, device)?;
             }
         }
         Ok(())
     }
 
     /// This method gets called to start the udp stream
-    fn start_stream(&self, config: StreamerConfig, device: Device, target: &str) -> anyhow::Result<()>;
+    fn start_stream(&self, config: StreamerConfig, device: Device, target: SocketAddr) -> anyhow::Result<()>;
 
     /// Read from a given TcpStream with a BufReader
     fn read_buffer(stream: &mut TcpStream) -> std::io::Result<TcpControlPacket> {
@@ -139,7 +140,7 @@ pub trait TcpControlFlow {
     /// This is the loop that gets called when the mode is set to [Direction::Sender]
     fn sender_loop(
         &self,
-        target_addr: &str,
+        target_addr: SocketAddr,
         stream: &mut TcpStream,
         streamer_config: StreamerConfig,
         device: Device,
@@ -211,7 +212,7 @@ pub trait TcpControlFlow {
     /// This is the loop that gets called when the mode is set to [Direction::Receiver]
     fn receiver_loop(
         &self,
-        target_addr: &str,
+        target_addr: SocketAddr,
         listener: TcpListener,
         streamer_config: StreamerConfig,
         device: Device,
@@ -307,7 +308,7 @@ mod tests {
     use super::*;
     #[cfg(test)]
     mod tests {
-        use std::time::Duration;
+        use std::{net::SocketAddr, str::FromStr, time::Duration};
 
         use cpal::traits::{DeviceTrait, HostTrait};
         use threadpool::ThreadPool;
@@ -343,7 +344,7 @@ mod tests {
                     direction: Direction::Receiver,
                 };
                 server
-                    .serve("127.0.0.1:1234", streamer_config, device)
+                    .serve(SocketAddr::from_str("127.0.0.1:1234").unwrap(), streamer_config, device)
                     .unwrap();
             });
 
@@ -370,7 +371,7 @@ mod tests {
                     direction: Direction::Sender,
                 };
                 client
-                    .serve("127.0.0.1:1234", streamer_config, device)
+                    .serve(SocketAddr::from_str("127.0.0.1:1234").unwrap(), streamer_config, device)
                     .unwrap();
             });
 

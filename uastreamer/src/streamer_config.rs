@@ -8,7 +8,7 @@ use crate::{
     args::{ReceiverCliArgs, SenderCliArgs}, search_device, search_for_host, streamer::{self, Direction}, DEFAULT_PORT, SENDER_BUFFER_SIZE
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct StreamerConfig {
     pub direction: Direction,
     pub cpal_config: cpal::StreamConfig,
