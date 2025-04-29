@@ -6,11 +6,7 @@ use cpal::{
     traits::{DeviceTrait, HostTrait},
 };
 use uastreamer::{
-    DEFAULT_PORT, SENDER_BUFFER_SIZE,
-    args::ReceiverCliArgs,
-    enumerate, search_device, search_for_host,
-    streamer::{self, StreamComponent, Streamer},
-    tui::tui,
+    args::ReceiverCliArgs, enumerate, search_device, search_for_host, streamer::{self, StreamComponent, Streamer}, streamer_config::StreamerConfig, tui::tui, DEFAULT_PORT, SENDER_BUFFER_SIZE
 };
 
 /// Main entrypoint for the receiver
@@ -68,17 +64,24 @@ fn main() -> anyhow::Result<()> {
 
     dbg!(&args.output_channels);
 
+    let streamer_config = StreamerConfig {
+        direction: streamer::Direction::Receiver,
+        channel_count: config.channels,
+        cpal_config: config,
+        buffer_size: buf_size as usize,
+        send_network_stats: args.ui,
+        send_cpal_stats: args.ui,
+        selected_channels: vec![0,1],
+        port: args.port.unwrap_or(DEFAULT_PORT),
+    };
+
     let receiver = Streamer::construct::<f32>(
-        streamer::Direction::Receiver,
-        args.port.unwrap_or(DEFAULT_PORT),
-        Ipv4Addr::from_str("0.0.0.0").expect("Invalid Host Address"),
+        std::net::SocketAddr::from_str("0.0.0.0").expect("Invalid Host Address"),
         &device,
-        &config,
-        args.output_channels,
-        buf_size.try_into().unwrap(),
-        args.ui
+        streamer_config,
     )
     .unwrap();
+
     if args.ui {
         tui(
             streamer::Direction::Receiver,

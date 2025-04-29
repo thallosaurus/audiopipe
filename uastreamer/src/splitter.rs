@@ -108,7 +108,7 @@ pub struct ChannelMerger<'a, T: cpal::SizedSample + Send + Pod + Default + Debug
 impl<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> ChannelMerger<'a, T> {
     pub fn new(
         data: &'a mut HeapCons<T>,
-        selected_channels: Vec<usize>,
+        selected_channels: &Vec<usize>,
         channel_count: ChannelCount,
         output_length: usize,
     ) -> Result<Self, SplitterMergerError> {
@@ -205,7 +205,7 @@ mod tests {
             prod.try_push(*d).unwrap();
         }
 
-        let merger = ChannelMerger::new(&mut cons, vec![1, 3], 4, output_data.len()).unwrap();
+        let merger = ChannelMerger::new(&mut cons, &vec![1, 3], 4, output_data.len()).unwrap();
 
         let v: Vec<i32> = merger.into_iter().map(|e| e).collect();
         println!("{:?}", v);

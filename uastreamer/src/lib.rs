@@ -1,9 +1,11 @@
-use std::{fs::{create_dir_all, File}, io::BufWriter, time::SystemTime};
+use std::{fs::{create_dir_all, File}, io::BufWriter, str::FromStr, sync::mpsc::Receiver, thread::JoinHandle, time::SystemTime};
 
 use bytemuck::Pod;
+use control::{TcpCommunication, TcpControlFlow};
 use cpal::{traits::*, *};
 use hound::WavWriter;
-use streamer::Direction;
+use streamer::{CpalStats, Direction, StreamComponent, Streamer, UdpStats};
+use streamer_config::StreamerConfig;
 
 /// Default Port if none is specified
 pub const DEFAULT_PORT: u16 = 42069;
@@ -31,6 +33,12 @@ pub mod args;
 
 /// Holds everything related to the audio buffer splitter
 pub mod splitter;
+
+/// Holds everything related to the TCP Communication Channel
+pub mod control;
+
+/// Holds the config struct which gets passed around
+pub mod streamer_config;
 
 /// Enumerate all available devices on the system
 pub fn enumerate(direction: Direction, host: &Host) -> anyhow::Result<()> {
@@ -149,6 +157,44 @@ pub fn write_debug<T: cpal::SizedSample + Send + Pod + Default + 'static>(writer
     if let Some(writer) = writer {
         let s: f32 = bytemuck::cast(sample);
         writer.write_sample(s).unwrap();
+    }
+}
+
+struct App {
+    config: StreamerConfig,
+    _stream: Stream,
+    _udp_loop: JoinHandle<()>,
+    //direction: Direction,
+    pub net_stats: Receiver<UdpStats>,
+    pub cpal_stats: Receiver<CpalStats>,
+}
+
+impl TcpControlFlow for App {
+    fn start_stream(&self, config: StreamerConfig, device: Device, target: &str) -> Box<streamer::Streamer> {
+        Streamer::construct::<f32>(
+            std::net::SocketAddr::from_str(&target).expect("Invalid Host Address"),
+            &device,
+            config,
+        )
+        .unwrap()
+    }
+}
+
+impl StreamComponent for App {
+    fn construct<T: cpal::SizedSample + Send + Pod + Default + std::fmt::Debug + 'static>(
+        target: std::net::SocketAddr,
+        device: &cpal::Device,
+        streamer_config: StreamerConfig,
+    ) -> anyhow::Result<Box<Self>> {
+        todo!()
+    }
+
+    fn get_bufer_size(&self) -> usize {
+        todo!()
+    }
+
+    fn set_bufer_size(&self, size: usize) {
+        todo!()
     }
 }
 

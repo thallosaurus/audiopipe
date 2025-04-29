@@ -1,0 +1,157 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'uastreamer'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=uastreamer"
+                ],
+                "filter": {
+                    "name": "uastreamer",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'receiver'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=receiver",
+                    "--package=uastreamer"
+                ],
+                "filter": {
+                    "name": "receiver",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'receiver'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=receiver",
+                    "--package=uastreamer"
+                ],
+                "filter": {
+                    "name": "receiver",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'sender'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=sender",
+                    "--package=uastreamer"
+                ],
+                "filter": {
+                    "name": "sender",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'sender'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=sender",
+                    "--package=uastreamer"
+                ],
+                "filter": {
+                    "name": "sender",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'sender_tcp'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=sender_tcp",
+                    "--package=uastreamer"
+                ],
+                "filter": {
+                    "name": "sender_tcp",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'receiver_tcp'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=receiver_tcp",
+                    "--package=uastreamer"
+                ],
+                "filter": {
+                    "name": "receiver_tcp",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'tcp'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=tcp",
+                    "--package=uastreamer"
+                ],
+                "filter": {
+                    "name": "tcp",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
