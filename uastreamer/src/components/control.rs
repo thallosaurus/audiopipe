@@ -156,7 +156,7 @@ pub trait TcpControlFlow {
 
         //dbg!(&json);
 
-        debug_assert_eq!(json.state, TcpControlState::Endpoint(12345));
+        //debug_assert_eq!(json.state, TcpControlState::Endpoint(12345));
 
         match json.state {
             TcpControlState::Endpoint(e) => {
