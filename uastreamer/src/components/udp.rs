@@ -1,7 +1,7 @@
 use std::{
     fmt::Debug,
-    net::UdpSocket,
-    sync::{Arc, Mutex, mpsc::Sender},
+    net::{SocketAddr, UdpSocket},
+    sync::{mpsc::Sender, Arc, Mutex},
 };
 
 use bytemuck::Pod;
@@ -27,7 +27,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
     fn construct_udp_stream(
         direction: Direction,
         config: StreamerConfig,
-        target: &str,
+        target: SocketAddr,
         buffer_consumer: Arc<Mutex<HeapCons<T>>>,
         buffer_producer: Arc<Mutex<HeapProd<T>>>,
         stats: Sender<UdpStats>,

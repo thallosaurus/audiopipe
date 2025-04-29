@@ -321,9 +321,10 @@ impl<T> TcpControlFlow for AppTest<T> where
             let cons = self.udp_get_consumer();
             let stats = self.get_udp_stats_sender();
             let uconfig = config.clone();
-            let t = target.to_string();
+            dbg!(&target);
+
             self.pool.execute(move || {
-                Self::construct_udp_stream(dir, uconfig, &t, cons, prod, stats).unwrap();
+                Self::construct_udp_stream(dir, uconfig, target, cons, prod, stats).unwrap();
             });
         }
         Ok(())

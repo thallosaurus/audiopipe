@@ -154,18 +154,22 @@ pub trait TcpControlFlow {
         // Read the answer
         let json = Self::read_buffer(stream)?;
 
-        dbg!(&json);
+        //dbg!(&json);
 
         debug_assert_eq!(json.state, TcpControlState::Endpoint(12345));
 
         match json.state {
             TcpControlState::Endpoint(e) => {
-                println!("Connecting to port {}", e);
+                dbg!("Connecting to port {}", e);
 
                 // TODO implement packet validation
 
                 //#[cfg(not(debug_assertions))]
-                let streamer = self.start_stream(streamer_config, device, target_addr);
+                let mut target = target_addr.clone();
+                target.set_port(e);
+
+                dbg!("Creating streamer for address: {}", target);
+                let streamer = self.start_stream(streamer_config, device, target);
 
                 //wait until the connection is disconnected or dropped
                 loop {
@@ -239,7 +243,7 @@ pub trait TcpControlFlow {
                     state: TcpControlState::Endpoint(12345),
 
                     #[cfg(not(debug_assertions))]
-                    state: TcpControlState::Endpoint(12345),
+                    state: TcpControlState::Endpoint(42069),
                 };
                 dbg!(&packet);
 
