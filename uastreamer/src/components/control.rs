@@ -232,15 +232,7 @@ pub trait TcpControlFlow {
 
                 //open device
 
-
-
                 let streamer = self.start_stream(streamer_config.clone(), device, target_addr);
-
-                /*#[cfg(debug_assertions)]
-                let _udp_stream: Option<Streamer> = None;
-
-                #[cfg(not(debug_assertions))]
-                let _udp_stream: Option<Streamer> = None;*/
 
                 let packet = TcpControlPacket {
                     #[cfg(debug_assertions)]

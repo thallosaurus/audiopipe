@@ -44,6 +44,7 @@ pub mod splitter;
 /// Holds the config struct which gets passed around
 pub mod streamer_config;
 
+/// Holds all flows this app offers
 pub mod components;
 
 /// Enumerate all available devices on the system
