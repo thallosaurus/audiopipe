@@ -1,5 +1,3 @@
-use std::{net::Ipv4Addr, str::FromStr};
-
 use clap::Parser;
 use cpal::{
     ChannelCount, Device, StreamConfig,
@@ -7,7 +5,7 @@ use cpal::{
 };
 
 use crate::{
-    args::{ReceiverCliArgs, SenderCliArgs}, enumerate, search_device, search_for_host, streamer::{self, Direction}, DEFAULT_PORT, SENDER_BUFFER_SIZE
+    args::{ReceiverCliArgs, SenderCliArgs}, search_device, search_for_host, streamer::{self, Direction}, DEFAULT_PORT, SENDER_BUFFER_SIZE
 };
 
 #[derive(Clone)]

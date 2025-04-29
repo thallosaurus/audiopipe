@@ -2,7 +2,7 @@ use std::{fs::{create_dir_all, File}, io::BufWriter, str::FromStr, sync::mpsc::R
 
 use bytemuck::Pod;
 
-use components::{control::TcpControlFlow, streamer::{self, CpalStats, Direction, StreamComponent, Streamer, UdpStats}};
+use components::{control::TcpControlFlow, cpal::CpalStats, streamer::{self, Direction, StreamComponent, Streamer}, udp::UdpStats};
 use cpal::{traits::*, *};
 use hound::WavWriter;
 

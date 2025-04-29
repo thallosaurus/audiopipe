@@ -30,24 +30,11 @@ use crate::{
     write_debug,
 };
 
-/// Stats which get sent after each UDP Event
-#[derive(Default)]
-pub struct UdpStats {
-    pub sent: Option<usize>,
-    pub received: Option<usize>,
-    pub pre_occupied_buffer: usize,
-    pub post_occupied_buffer: usize,
-}
+use super::{cpal::CpalStats, udp::UdpStats};
 
-/// Stats which get sent during each CPAL Callback Invocation after the main action is done
-#[derive(Default)]
-pub struct CpalStats {
-    //pub requested_sample_length: usize,
-    pub consumed: Option<usize>,
-    pub requested: Option<usize>,
-    pub input_info: Option<InputCallbackInfo>,
-    pub output_info: Option<OutputCallbackInfo>,
-}
+
+
+
 
 /// Defines the behaivior of the stream
 ///

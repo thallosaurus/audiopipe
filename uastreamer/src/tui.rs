@@ -16,7 +16,7 @@ use ratatui::{
     widgets::{Block, Paragraph, Widget},
 };
 
-use crate::streamer::{CpalStats, Direction, UdpStats};
+use crate::{components::{cpal::CpalStats, udp::UdpStats}, streamer::Direction};
 
 pub fn tui(
     direction: Direction,
