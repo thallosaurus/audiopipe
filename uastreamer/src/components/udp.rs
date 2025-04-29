@@ -70,21 +70,21 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             if buffer_consumer.is_full() {
                 // TODO Check if this might slow down communication
                 let mut network_buffer: Box<[T]> =
-                    vec![T::default(); buffer_consumer.capacity().into()].into_boxed_slice();
-
+                vec![T::default(); buffer_consumer.capacity().into()].into_boxed_slice();
+                
                 // get buffer size before changes
                 let pre_occupied_buffer = buffer_consumer.occupied_len();
-
+                
                 // Place the network buffer onto the stack
                 buffer_consumer.pop_slice(&mut network_buffer);
-
+                
                 // Occupied Size after operation
                 let post_occupied_buffer = buffer_consumer.occupied_len();
-
+                
                 // The Casted UDP Packet
                 let udp_packet: &[u8] = bytemuck::cast_slice(&network_buffer);
-
-                let _ = socket.send(udp_packet);
+                
+                let sent_s = socket.send(udp_packet).unwrap();
 
                 // Send statistics to the channel
                 if streamer_config.send_network_stats {

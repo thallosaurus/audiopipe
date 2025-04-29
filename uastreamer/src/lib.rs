@@ -234,7 +234,7 @@ pub struct AppTest<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static
 impl<T> AppTest<T> where T: cpal::SizedSample + Send + Pod + Default + Debug + 'static {
     pub fn new(config: StreamerConfig) -> (Self, AppTestDebug) {
         dbg!(&config);
-        let audio_buffer = ringbuf::HeapRb::<T>::new(config.buffer_size * (config.channel_count as usize));
+        let audio_buffer = ringbuf::HeapRb::<T>::new(config.buffer_size * config.selected_channels.len());
 
         println!("{}", audio_buffer.capacity());
 

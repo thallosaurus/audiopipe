@@ -131,7 +131,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         )
         .unwrap();
 
-        println!("Buffer Size inside cpal: {}, CPAL Len: {}", output.capacity(), data.len());
+        //println!("Buffer Size inside cpal: {}, CPAL Len: {}", output.capacity(), data.len());
 
         // Iterate through the input buffer and save data
         // TODO NOTE: The size of the slice is buffer_size * channelCount,
@@ -144,15 +144,17 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                     output.try_push(Sample::EQUILIBRIUM).unwrap();
                 }
             }
+
             // If the program runs in debug mode, the debug wav writer becomes available
             //#[cfg(debug_assertions)]
             /*if let Some(writer) = writer {
                 writer.write_sample(*s.sample).unwrap();
-            }*/
-
-            consumed += 1;
-        }
-        consumed
+                }*/
+                
+                consumed += 1;
+            }
+            //println!("buffer after splitter: {}", output.occupied_len());
+            consumed
     }
 
     /// Writes the buffer to the specified CPAL slice
