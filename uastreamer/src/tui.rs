@@ -16,11 +16,11 @@ use ratatui::{
     widgets::{Block, Paragraph, Widget},
 };
 
-use crate::streamer::{CpalStats, Direction, UdpStats};
+use crate::{components::{cpal::CpalStats, udp::UdpStats}, streamer::Direction};
 
 pub fn tui(
     direction: Direction,
-    device_config: &Device,
+    device_name: String,
     net_stats: Receiver<UdpStats>,
     cpal_stats: Receiver<CpalStats>,
 ) -> io::Result<()> {
@@ -31,9 +31,7 @@ pub fn tui(
         net_stats: Arc::new(Mutex::new(net_stats)),
         cpal_stats: Arc::new(Mutex::new(cpal_stats)),
         direction,
-        device_name: device_config
-            .name()
-            .unwrap_or("Unknown Device Name".to_string()),
+        device_name,
     };
 
     //app.set_receiver(rx, cpal_rx);

@@ -1,4 +1,4 @@
-use std::{net::Ipv4Addr, str::FromStr};
+use std::sync::{Arc, Mutex};
 
 use clap::Parser;
 use cpal::{
@@ -7,10 +7,10 @@ use cpal::{
 };
 
 use crate::{
-    args::{ReceiverCliArgs, SenderCliArgs}, enumerate, search_device, search_for_host, streamer::{self, Direction}, DEFAULT_PORT, SENDER_BUFFER_SIZE
+    args::{ReceiverCliArgs, SenderCliArgs}, search_device, search_for_host, streamer::{self, Direction}, DEFAULT_PORT, SENDER_BUFFER_SIZE
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct StreamerConfig {
     pub direction: Direction,
     pub cpal_config: cpal::StreamConfig,
@@ -23,7 +23,7 @@ pub struct StreamerConfig {
 }
 
 impl StreamerConfig {
-    pub fn from_cli_args(direction: Direction) -> anyhow::Result<(Self, Device)> {
+    pub fn from_cli_args(direction: Direction) -> anyhow::Result<(Self, Arc<Mutex<Device>>)> {
         
         let (device, streamer_config) = match direction {
             Direction::Sender => {
@@ -72,7 +72,7 @@ impl StreamerConfig {
                     port: args.port.unwrap_or(DEFAULT_PORT),
                 };
 
-                (device, sconfig)
+                (Arc::new(Mutex::new(device)), sconfig)
             }
             Direction::Receiver => {
                 let args = ReceiverCliArgs::parse();
@@ -120,7 +120,7 @@ impl StreamerConfig {
                     port: args.port.unwrap_or(DEFAULT_PORT),
                 };
 
-                (device, sconfig)
+                (Arc::new(Mutex::new(device)), sconfig)
             },
         };
         // parse device selector
@@ -131,7 +131,7 @@ impl StreamerConfig {
 
         println!(
             "Using device {}",
-            device.name().unwrap_or("Unknown Device".to_string())
+            device.lock().unwrap().name().unwrap_or("Unknown Device".to_string())
         );
 
         Ok((streamer_config, device))

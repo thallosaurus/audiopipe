@@ -1,7 +1,5 @@
 use std::{
-    io::{BufRead, BufReader, BufWriter, Write},
-    net::{Ipv4Addr, TcpListener, TcpStream},
-    str::FromStr,
+    io::{BufRead, BufReader, BufWriter, Write}, net::{SocketAddr, TcpListener, TcpStream}, str::FromStr, sync::{Arc, Mutex}, time::Duration
 };
 
 use cpal::Device;
@@ -13,7 +11,7 @@ use crate::{
 };
 
 /// Provisorial Struct to initialize the TCP Control Flow
-/// TODO: Make it all trait and implement a single App-like Struct
+#[deprecated]
 pub struct TcpCommunication {
     pub direction: Direction,
 }
@@ -21,9 +19,9 @@ pub struct TcpCommunication {
 impl TcpCommunication {
     pub fn serve(
         &self,
-        tcp_addr: &str,
+        tcp_addr: SocketAddr,
         streamer_config: StreamerConfig,
-        device: Device,
+        device: Arc<Mutex<Device>>,
     ) -> std::io::Result<()> {
         match self.direction {
             Direction::Sender => {
@@ -45,17 +43,23 @@ impl TcpControlFlow for TcpCommunication {
     fn start_stream(
         &self,
         streamer_config: StreamerConfig,
-        device: Device,
-        target: &str,
-    ) -> Box<Streamer> {
+        device: Arc<Mutex<cpal::Device>>,
+        target: SocketAddr,
+    ) -> Result<(), anyhow::Error> {
         // TODO Implement more data types
         // locked to f32 for now
         Streamer::construct::<f32>(
-            std::net::SocketAddr::from_str(&target).expect("Invalid Host Address"),
-            &device,
+            target,
+            device,
             streamer_config,
         )
-        .unwrap()
+        .unwrap();
+
+    Ok(())
+    }
+    
+    fn get_tcp_direction(&self) -> Direction {
+        self.direction
     }
 }
 
@@ -69,17 +73,41 @@ impl TcpControlFlow for TcpCommunication {
 /// the Port for the started stream.
 pub trait TcpControlFlow {
     /// Helper function to create a new TcpListener
-    fn create_new_tcp_listener(addr: &str) -> std::io::Result<TcpListener> {
+    fn create_new_tcp_listener(addr: SocketAddr) -> std::io::Result<TcpListener> {
         TcpListener::bind(addr)
     }
 
     /// Helper function to create a new TcpStream
-    fn create_new_tcp_stream(addr: &str) -> std::io::Result<TcpStream> {
-        TcpStream::connect(addr)
+    fn create_new_tcp_stream(addr: SocketAddr) -> std::io::Result<TcpStream> {
+        TcpStream::connect_timeout(&addr, Duration::from_secs(5))
+    }
+
+    fn get_tcp_direction(&self) -> Direction;
+
+    fn serve(
+        &self,
+        tcp_addr: &str,
+        streamer_config: StreamerConfig,
+        device: Arc<Mutex<Device>>,
+    ) -> std::io::Result<()> {
+        let target = SocketAddr::from_str(tcp_addr).unwrap();
+        match self.get_tcp_direction() {
+            Direction::Sender => {
+                let mut stream = TcpCommunication::create_new_tcp_stream(target)?;
+                println!("connecting to {}", tcp_addr);
+                self.sender_loop(target, &mut stream, streamer_config, device)?;
+            }
+            Direction::Receiver => {
+                let listener = TcpCommunication::create_new_tcp_listener(target)?;
+                println!("listening to {}", tcp_addr);
+                self.receiver_loop(target, listener, streamer_config, device)?;
+            }
+        }
+        Ok(())
     }
 
     /// This method gets called to start the udp stream
-    fn start_stream(&self, config: StreamerConfig, device: Device, target: &str) -> Box<Streamer>;
+    fn start_stream(&self, config: StreamerConfig, device: Arc<Mutex<Device>>, target: SocketAddr) -> anyhow::Result<()>;
 
     /// Read from a given TcpStream with a BufReader
     fn read_buffer(stream: &mut TcpStream) -> std::io::Result<TcpControlPacket> {
@@ -110,10 +138,10 @@ pub trait TcpControlFlow {
     /// This is the loop that gets called when the mode is set to [Direction::Sender]
     fn sender_loop(
         &self,
-        target_addr: &str,
+        target_addr: SocketAddr,
         stream: &mut TcpStream,
         streamer_config: StreamerConfig,
-        device: Device,
+        device: Arc<Mutex<Device>>,
     ) -> std::io::Result<()> {
         // Start by connecting
         let packet = TcpControlPacket {
@@ -126,18 +154,22 @@ pub trait TcpControlFlow {
         // Read the answer
         let json = Self::read_buffer(stream)?;
 
-        dbg!(&json);
+        //dbg!(&json);
 
-        debug_assert_eq!(json.state, TcpControlState::Endpoint(12345));
+        //debug_assert_eq!(json.state, TcpControlState::Endpoint(12345));
 
         match json.state {
             TcpControlState::Endpoint(e) => {
-                println!("Connecting to port {}", e);
+                dbg!("Connecting to port {}", e);
 
                 // TODO implement packet validation
 
                 //#[cfg(not(debug_assertions))]
-                let streamer = self.start_stream(streamer_config, device, target_addr);
+                let mut target = target_addr.clone();
+                target.set_port(e);
+
+                dbg!("Creating streamer for address: {}", target);
+                let streamer = self.start_stream(streamer_config, device, target);
 
                 //wait until the connection is disconnected or dropped
                 loop {
@@ -182,12 +214,13 @@ pub trait TcpControlFlow {
     /// This is the loop that gets called when the mode is set to [Direction::Receiver]
     fn receiver_loop(
         &self,
-        target_addr: &str,
+        target_addr: SocketAddr,
         listener: TcpListener,
         streamer_config: StreamerConfig,
-        device: Device,
+        device: Arc<Mutex<Device>>,
     ) -> std::io::Result<()> {
         for stream in listener.incoming() {
+            let device = device.clone();
             println!("Connected");
 
             let mut stream = stream?;
@@ -202,21 +235,15 @@ pub trait TcpControlFlow {
                 println!("Opening new Stream");
 
                 //open device
-                //#[cfg(not(debug_assertions))]
-                let streamer = self.start_stream(streamer_config, device, target_addr);
 
-                /*#[cfg(debug_assertions)]
-                let _udp_stream: Option<Streamer> = None;
-
-                #[cfg(not(debug_assertions))]
-                let _udp_stream: Option<Streamer> = None;*/
+                let streamer = self.start_stream(streamer_config.clone(), device, target_addr);
 
                 let packet = TcpControlPacket {
                     #[cfg(debug_assertions)]
-                    state: TcpControlState::Endpoint(12345),
+                    state: TcpControlState::Endpoint(42069),
 
                     #[cfg(not(debug_assertions))]
-                    state: TcpControlState::Endpoint(12345),
+                    state: TcpControlState::Endpoint(42069),
                 };
                 dbg!(&packet);
 
@@ -278,14 +305,14 @@ mod tests {
     use super::*;
     #[cfg(test)]
     mod tests {
-        use std::time::Duration;
+        use std::{net::SocketAddr, str::FromStr, sync::{Arc, Mutex}, time::Duration};
 
         use cpal::traits::{DeviceTrait, HostTrait};
         use threadpool::ThreadPool;
 
         use crate::{
             DEFAULT_PORT,
-            control::TcpCommunication,
+            components::control::TcpCommunication,
             streamer::{self, Direction},
             streamer_config::StreamerConfig,
         };
@@ -313,8 +340,10 @@ mod tests {
                 let server = TcpCommunication {
                     direction: Direction::Receiver,
                 };
+
+                let device = Arc::new(Mutex::new(device));
                 server
-                    .serve("127.0.0.1:1234", streamer_config, device)
+                    .serve(SocketAddr::from_str("127.0.0.1:1234").unwrap(), streamer_config, device)
                     .unwrap();
             });
 
@@ -340,8 +369,11 @@ mod tests {
                 let client = TcpCommunication {
                     direction: Direction::Sender,
                 };
+
+                let device = Arc::new(Mutex::new(device));
+
                 client
-                    .serve("127.0.0.1:1234", streamer_config, device)
+                    .serve(SocketAddr::from_str("127.0.0.1:1234").unwrap(), streamer_config, device)
                     .unwrap();
             });
 

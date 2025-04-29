@@ -4,8 +4,7 @@ use std::{
     io::BufWriter,
     net::{self, UdpSocket},
     sync::{
-        Arc,
-        mpsc::{Receiver, Sender, channel},
+        mpsc::{channel, Receiver, Sender}, Arc, Mutex
     },
     thread::JoinHandle,
 };
@@ -23,37 +22,20 @@ use ringbuf::{
 
 use crate::{
     DebugWavWriter,
-    control::TcpControlFlow,
+    components::control::TcpControlFlow,
     create_wav_writer,
     splitter::{ChannelMerger, ChannelSplitter},
     streamer_config::StreamerConfig,
     write_debug,
 };
 
-/// Stats which get sent after each UDP Event
-#[derive(Default)]
-pub struct UdpStats {
-    pub sent: Option<usize>,
-    pub received: Option<usize>,
-    pub pre_occupied_buffer: usize,
-    pub post_occupied_buffer: usize,
-}
-
-/// Stats which get sent during each CPAL Callback Invocation after the main action is done
-#[derive(Default)]
-pub struct CpalStats {
-    //pub requested_sample_length: usize,
-    pub consumed: Option<usize>,
-    pub requested: Option<usize>,
-    pub input_info: Option<InputCallbackInfo>,
-    pub output_info: Option<OutputCallbackInfo>,
-}
+use super::{cpal::CpalStats, udp::UdpStats};
 
 /// Defines the behaivior of the stream
 ///
 /// Sender: Captures from an audio input stream and sends it over the network
 /// Receiver: Receives from the network and outputs it to a audio output stream
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Direction {
     Sender,
     Receiver,
@@ -63,10 +45,11 @@ pub enum Direction {
 ///
 /// The Sender Adapter simply copies the input from the specified device to a ringbuffer and sends it over the network
 /// The Receiver Adapter receives the data and outputs it to the specified device
+#[deprecated]
 pub trait StreamComponent {
     fn construct<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static>(
         target: net::SocketAddr,
-        device: &cpal::Device,
+        device: Arc<Mutex<cpal::Device>>,
         streamer_config: StreamerConfig,
     ) -> anyhow::Result<Box<Self>>;
 
@@ -287,6 +270,7 @@ pub trait StreamComponent {
 
 /// Struct that holds the Streamer.
 /// See [StreamComponent] for more information about how the streamer works
+#[deprecated]
 pub struct Streamer {
     config: StreamerConfig,
     _stream: Stream,
@@ -297,7 +281,7 @@ pub struct Streamer {
 }
 
 impl Streamer {
-    pub fn from_sample_format(
+    /*pub fn from_sample_format(
         format: cpal::SampleFormat,
         target: net::SocketAddr,
         device: &cpal::Device,
@@ -317,13 +301,13 @@ impl Streamer {
             cpal::SampleFormat::F32 => Self::construct::<f32>(target, device, streamer_config),
             _ => panic!("Unsupported Sample Format: {:?}", format),
         }?)
-    }
+    }*/
 }
 
 impl StreamComponent for Streamer {
     fn construct<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static>(
         target: net::SocketAddr,
-        device: &cpal::Device,
+        device: Arc<Mutex<cpal::Device>>,
         streamer_config: StreamerConfig,
     ) -> Result<Box<Self>, anyhow::Error> {
         let buf = HeapRb::<T>::new((streamer_config.buffer_size as usize) * 2);
@@ -336,14 +320,16 @@ impl StreamComponent for Streamer {
 
         let stream_config_for_struct = streamer_config.clone();
 
+        let device = device.lock().unwrap();
+
         // Start CPAL Stream and also start UDP Thread
         let (_stream, _udp_loop) = match streamer_config.direction {
             Direction::Sender => {
                 let socket = UdpSocket::bind(target)?;
                 socket.connect(format!("{}:{}", target, streamer_config.port))?;
 
-                #[cfg(debug_assertions)]
                 let mut writer = create_wav_writer("sender_dump".to_owned(), 1, 44100)?;
+                
 
                 let sconfig = streamer_config.clone();
                 let cpal_tx = cpal_arc.clone();

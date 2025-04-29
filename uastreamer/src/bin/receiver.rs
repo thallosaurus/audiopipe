@@ -1,4 +1,4 @@
-use std::{net::Ipv4Addr, str::FromStr};
+use std::{net::Ipv4Addr, str::FromStr, sync::{Arc, Mutex}};
 
 use clap::Parser;
 use cpal::{
@@ -6,7 +6,7 @@ use cpal::{
     traits::{DeviceTrait, HostTrait},
 };
 use uastreamer::{
-    args::ReceiverCliArgs, enumerate, search_device, search_for_host, streamer::{self, StreamComponent, Streamer}, streamer_config::StreamerConfig, tui::tui, DEFAULT_PORT, SENDER_BUFFER_SIZE
+    args::ReceiverCliArgs, components::streamer::{self, StreamComponent, Streamer}, enumerate, search_device, search_for_host, streamer_config::StreamerConfig, tui::tui, DEFAULT_PORT, SENDER_BUFFER_SIZE
 };
 
 /// Main entrypoint for the receiver
@@ -75,9 +75,13 @@ fn main() -> anyhow::Result<()> {
         port: args.port.unwrap_or(DEFAULT_PORT),
     };
 
+    let name = device.name().unwrap_or("Unknown Device Name".to_string());
+
+    let device = Arc::new(Mutex::new(device));
+
     let receiver = Streamer::construct::<f32>(
         std::net::SocketAddr::from_str("0.0.0.0").expect("Invalid Host Address"),
-        &device,
+        device,
         streamer_config,
     )
     .unwrap();
@@ -85,7 +89,7 @@ fn main() -> anyhow::Result<()> {
     if args.ui {
         tui(
             streamer::Direction::Receiver,
-            &device,
+            name,
             receiver.net_stats,
             receiver.cpal_stats,
         )
