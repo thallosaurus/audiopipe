@@ -23,7 +23,7 @@ use ringbuf::{
 
 use crate::{
     DebugWavWriter,
-    control::TcpControlFlow,
+    components::control::TcpControlFlow,
     create_wav_writer,
     splitter::{ChannelMerger, ChannelSplitter},
     streamer_config::StreamerConfig,

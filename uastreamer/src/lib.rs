@@ -1,10 +1,11 @@
 use std::{fs::{create_dir_all, File}, io::BufWriter, str::FromStr, sync::mpsc::Receiver, thread::JoinHandle, time::SystemTime};
 
 use bytemuck::Pod;
-use control::{TcpCommunication, TcpControlFlow};
+
+use components::{control::TcpControlFlow, streamer::{self, CpalStats, Direction, StreamComponent, Streamer, UdpStats}};
 use cpal::{traits::*, *};
 use hound::WavWriter;
-use streamer::{CpalStats, Direction, StreamComponent, Streamer, UdpStats};
+
 use streamer_config::StreamerConfig;
 
 /// Default Port if none is specified
@@ -22,8 +23,6 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Re-export of the Cargo Package Description
 pub const PKG_DESC: &str = env!("CARGO_PKG_DESCRIPTION");
 
-/// Holds all things streamer related
-pub mod streamer;
 
 /// Holds all things related to the statistics debug window
 pub mod tui;
@@ -34,11 +33,10 @@ pub mod args;
 /// Holds everything related to the audio buffer splitter
 pub mod splitter;
 
-/// Holds everything related to the TCP Communication Channel
-pub mod control;
-
 /// Holds the config struct which gets passed around
 pub mod streamer_config;
+
+pub mod components;
 
 /// Enumerate all available devices on the system
 pub fn enumerate(direction: Direction, host: &Host) -> anyhow::Result<()> {

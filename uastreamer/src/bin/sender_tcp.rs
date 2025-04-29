@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use threadpool::ThreadPool;
-use uastreamer::{control::{TcpCommunication, TcpControlFlow}, streamer::Direction, streamer_config::StreamerConfig};
+use uastreamer::{components::{control::TcpCommunication, streamer::Direction}, streamer_config::StreamerConfig};
 
 /// Test implementation for the tcp communication
 fn main() -> anyhow::Result<()> {

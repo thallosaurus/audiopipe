@@ -6,7 +6,7 @@ use std::{
     sync::{mpsc::Sender, Arc, Mutex},
 };
 use uastreamer::{
-    create_wav_writer, splitter::{ChannelMerger, ChannelSplitter}, streamer::{CpalStats, Direction}, streamer_config::StreamerConfig, write_debug, DebugWavWriter
+    components::streamer::{CpalStats, Direction}, create_wav_writer, splitter::{ChannelMerger, ChannelSplitter}, streamer_config::StreamerConfig, write_debug, DebugWavWriter
 };
 
 trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {

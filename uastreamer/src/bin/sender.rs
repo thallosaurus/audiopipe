@@ -6,7 +6,7 @@ use cpal::{
     traits::{DeviceTrait, HostTrait},
 };
 use uastreamer::{
-    args::SenderCliArgs, enumerate, search_device, search_for_host, streamer::{self, StreamComponent, Streamer}, streamer_config::StreamerConfig, tui::tui, DEFAULT_PORT, SENDER_BUFFER_SIZE
+    args::SenderCliArgs, components::streamer::{self, StreamComponent, Streamer}, enumerate, search_device, search_for_host, streamer_config::StreamerConfig, tui::tui, DEFAULT_PORT, SENDER_BUFFER_SIZE
 };
 
 /// Main entrypoint for the sender

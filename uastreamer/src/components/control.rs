@@ -285,7 +285,7 @@ mod tests {
 
         use crate::{
             DEFAULT_PORT,
-            control::TcpCommunication,
+            components::control::TcpCommunication,
             streamer::{self, Direction},
             streamer_config::StreamerConfig,
         };
