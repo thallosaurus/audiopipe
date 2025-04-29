@@ -34,10 +34,10 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
     ) -> std::io::Result<()> {
         match direction {
             Direction::Sender => {
-                let socket = UdpSocket::bind(target)?;
-                let f = format!("{}:{}", target, config.port);
-                println!("Connecting UDP to {}", f);
-                socket.connect(f)?;
+                let socket = UdpSocket::bind("0.0.0.0:0")?;
+                //let f = format!("{}:{}", target, config.port);
+                println!("[FLOW] Connecting UDP to {}", target);
+                socket.connect(target)?;
 
                 Self::udp_sender_loop(&config, socket, buffer_consumer, stats);
             }
