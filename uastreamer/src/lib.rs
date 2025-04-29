@@ -13,7 +13,7 @@ use components::{
 use cpal::{traits::*, *};
 use hound::WavWriter;
 
-use ringbuf::{traits::Split, HeapCons, HeapProd};
+use ringbuf::{traits::{Observer, Split}, HeapCons, HeapProd};
 use streamer_config::StreamerConfig;
 use threadpool::ThreadPool;
 
@@ -228,12 +228,15 @@ pub struct AppTest<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static
     cpal_stats_sender: Sender<CpalStats>,
     udp_stats_sender: Sender<UdpStats>,
     config: StreamerConfig,
-    pool: ThreadPool
+    pub pool: ThreadPool
 }
 
 impl<T> AppTest<T> where T: cpal::SizedSample + Send + Pod + Default + Debug + 'static {
     pub fn new(config: StreamerConfig) -> (Self, AppTestDebug) {
-        let audio_buffer = ringbuf::HeapRb::<T>::new(config.buffer_size * config.selected_channels.len());
+        dbg!(&config);
+        let audio_buffer = ringbuf::HeapRb::<T>::new(config.buffer_size * (config.channel_count as usize));
+
+        println!("{}", audio_buffer.capacity());
 
         let (audio_buffer_prod, audio_buffer_cons) = audio_buffer.split();
 

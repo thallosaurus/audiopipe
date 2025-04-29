@@ -3,7 +3,7 @@ use core::net;
 use cpal::{
     BuildStreamError, InputCallbackInfo, OutputCallbackInfo, Sample, Stream, traits::DeviceTrait,
 };
-use ringbuf::{HeapCons, HeapProd, traits::Producer};
+use ringbuf::{traits::{Observer, Producer}, HeapCons, HeapProd};
 use std::{
     fmt::Debug,
     sync::{Arc, Mutex, mpsc::Sender},
@@ -130,6 +130,8 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             streamer_config.channel_count,
         )
         .unwrap();
+
+        println!("Buffer Size inside cpal: {}, CPAL Len: {}", output.capacity(), data.len());
 
         // Iterate through the input buffer and save data
         // TODO NOTE: The size of the slice is buffer_size * channelCount,
