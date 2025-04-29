@@ -47,7 +47,7 @@ impl TcpControlFlow for TcpCommunication {
         streamer_config: StreamerConfig,
         device: Device,
         target: &str,
-    ) -> Box<Streamer> {
+    ) {
         // TODO Implement more data types
         // locked to f32 for now
         Streamer::construct::<f32>(
@@ -55,7 +55,7 @@ impl TcpControlFlow for TcpCommunication {
             &device,
             streamer_config,
         )
-        .unwrap()
+        .unwrap();
     }
 }
 
@@ -79,7 +79,7 @@ pub trait TcpControlFlow {
     }
 
     /// This method gets called to start the udp stream
-    fn start_stream(&self, config: StreamerConfig, device: Device, target: &str) -> Box<Streamer>;
+    fn start_stream(&self, config: StreamerConfig, device: Device, target: &str);
 
     /// Read from a given TcpStream with a BufReader
     fn read_buffer(stream: &mut TcpStream) -> std::io::Result<TcpControlPacket> {

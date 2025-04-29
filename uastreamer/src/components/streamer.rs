@@ -32,10 +32,6 @@ use crate::{
 
 use super::{cpal::CpalStats, udp::UdpStats};
 
-
-
-
-
 /// Defines the behaivior of the stream
 ///
 /// Sender: Captures from an audio input stream and sends it over the network

@@ -168,13 +168,13 @@ struct App {
 }
 
 impl TcpControlFlow for App {
-    fn start_stream(&self, config: StreamerConfig, device: Device, target: &str) -> Box<streamer::Streamer> {
+    fn start_stream(&self, config: StreamerConfig, device: Device, target: &str) {
         Streamer::construct::<f32>(
             std::net::SocketAddr::from_str(&target).expect("Invalid Host Address"),
             &device,
             config,
         )
-        .unwrap()
+        .unwrap();
     }
 }
 

@@ -1,4 +1,4 @@
-use std::{net::UdpSocket, sync::mpsc::Sender, fmt::Debug};
+use std::{fmt::Debug, net::UdpSocket, sync::{mpsc::Sender, Arc, Mutex}};
 
 use bytemuck::Pod;
 use ringbuf::{traits::{Consumer, Observer, Producer}, HeapCons, HeapProd};
@@ -23,15 +23,23 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             Direction::Receiver => todo!(),
         }
     }
+
+    fn udp_get_producer(&self) -> Arc<Mutex<HeapProd<T>>>;
+    fn udp_get_consumer(&self) -> Arc<Mutex<HeapCons<T>>>;
+
     /// Entry Point for the UDP Buffer Sender.
     /// Sends the buffer when it is full
     fn udp_sender_loop(
+        &self,
         streamer_config: &StreamerConfig,
         socket: UdpSocket,
-        buffer_consumer: &mut HeapCons<T>,
-        stats: Sender<UdpStats>,
+        //buffer_consumer: &mut HeapCons<T>,
+        //stats: Sender<UdpStats>,
     ) {
+        let buffer_consumer = self.udp_get_consumer();
+
         loop {
+            let mut buffer_consumer = buffer_consumer.lock().unwrap();
             // Only send the network package if the network buffer is full to avoid partial sends
             if buffer_consumer.is_full() {
                 // TODO Check if this might slow down communication
@@ -53,7 +61,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                 let _ = socket.send(udp_packet);
 
                 // Send statistics to the channel
-                if streamer_config.send_network_stats {
+                /*if streamer_config.send_network_stats {
                     stats
                         .send(UdpStats {
                             sent: Some(udp_packet.len()),
@@ -62,7 +70,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                             post_occupied_buffer,
                         })
                         .unwrap();
-                }
+                }*/
             }
         }
     }

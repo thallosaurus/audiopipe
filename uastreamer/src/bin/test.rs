@@ -1,23 +1,29 @@
-use std::sync::{mpsc::{Receiver, Sender}, Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    mpsc::{Receiver, Sender},
+};
 
 use bytemuck::Pod;
 use ringbuf::{HeapCons, HeapProd};
-use uastreamer::components::{cpal::{CpalAudioFlow, CpalStats}, udp::UdpStreamFlow};
+use uastreamer::components::{
+    control::TcpControlFlow, cpal::{CpalAudioFlow, CpalStats}, udp::UdpStreamFlow
+};
 
 use std::fmt::Debug;
-
 
 struct AppTest<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     audio_buffer_prod: Arc<Mutex<HeapProd<T>>>,
     audio_buffer_cons: Arc<Mutex<HeapCons<T>>>,
-    cpal_stats_sender: Sender<CpalStats>
+    cpal_stats_sender: Sender<CpalStats>,
 }
 
 struct AppTestDebug {
-    cpal_stats_receiver: Receiver<CpalStats>
+    cpal_stats_receiver: Receiver<CpalStats>,
 }
 
-impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> CpalAudioFlow<T> for AppTest<T> {
+impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> CpalAudioFlow<T>
+    for AppTest<T>
+{
     fn get_producer(&self) -> Arc<Mutex<HeapProd<T>>> {
         self.audio_buffer_prod.clone()
     }
@@ -25,13 +31,32 @@ impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> CpalAudioFlo
     fn get_consumer(&self) -> Arc<Mutex<HeapCons<T>>> {
         self.audio_buffer_cons.clone()
     }
-    
+
     fn get_cpal_stats_sender(&self) -> Sender<CpalStats> {
         self.cpal_stats_sender.clone()
     }
 }
 
-impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> UdpStreamFlow<T> for AppTest<T> {}
+impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> UdpStreamFlow<T>
+    for AppTest<T>
+{
+    fn udp_get_producer(&self) -> Arc<Mutex<HeapProd<T>>> {
+        self.audio_buffer_prod.clone()
+    }
+
+    fn udp_get_consumer(&self) -> Arc<Mutex<HeapCons<T>>> {
+        self.audio_buffer_cons.clone()
+    }
+}
+
+impl<T> TcpControlFlow for AppTest<T> where 
+    T: cpal::SizedSample + Send + Pod + Default + Debug + 'static
+{
+    fn start_stream(&self, config: uastreamer::streamer_config::StreamerConfig, device: cpal::Device, target: &str) {
+        //start video capture and udp sender here
+        //self.construct_stream(direction, &device, config)
+    }
+}
 
 /*pub fn from_sample_format(
     format: cpal::SampleFormat,
@@ -56,5 +81,5 @@ impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> UdpStreamFlo
 }*/
 
 fn main() {
-
+    //let app = App
 }
