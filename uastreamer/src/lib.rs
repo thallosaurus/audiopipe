@@ -1,5 +1,5 @@
 use std::{
-    fmt::Debug, fs::{create_dir_all, File}, io::BufWriter, net::SocketAddr, str::FromStr, sync::{mpsc::{self, Receiver, Sender}, Arc, Mutex}, thread::JoinHandle, time::SystemTime
+    fmt::Debug, fs::{create_dir_all, File}, io::BufWriter, net::{IpAddr, SocketAddr}, str::FromStr, sync::{mpsc::{self, Receiver, Sender}, Arc, Mutex}, thread::JoinHandle, time::SystemTime
 };
 
 use bytemuck::Pod;
@@ -302,6 +302,7 @@ impl<T> TcpControlFlow for AppTest<T> where
         //start video capture and udp sender here
         let dir = config.direction;
         {
+            dbg!("Constructing CPAL Stream");
             let stats = self.get_cpal_stats_sender();
             let prod = self.get_producer();
             let cons = self.get_consumer();
@@ -317,14 +318,19 @@ impl<T> TcpControlFlow for AppTest<T> where
         }
         
         {
+            dbg!("Constructing UDP Stream");
             let prod = self.udp_get_producer();
             let cons = self.udp_get_consumer();
             let stats = self.get_udp_stats_sender();
             let uconfig = config.clone();
             dbg!(&target);
 
+            let mut t = target.clone();
+            t.set_ip(IpAddr::from_str("0.0.0.0").unwrap());
+            t.set_port(42069);
+
             self.pool.execute(move || {
-                Self::construct_udp_stream(dir, uconfig, target, cons, prod, stats).unwrap();
+                Self::construct_udp_stream(dir, uconfig, t, cons, prod, stats).unwrap();
             });
         }
         Ok(())

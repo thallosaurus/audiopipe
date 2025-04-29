@@ -17,7 +17,7 @@ fn main() {
     dbg!(&config);
 
     let (app, debug) = AppTest::<f32>::new(config.clone());
-    app.serve("10.0.0.41:1234", config.clone(), device).unwrap();
+    app.serve("0.0.0.0:1234", config.clone(), device).unwrap();
 
     app.pool.join();
 }

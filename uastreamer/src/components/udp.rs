@@ -1,7 +1,5 @@
 use std::{
-    fmt::Debug,
-    net::{SocketAddr, UdpSocket},
-    sync::{mpsc::Sender, Arc, Mutex},
+    fmt::Debug, net::{IpAddr, SocketAddr, UdpSocket}, str::FromStr, sync::{mpsc::Sender, Arc, Mutex}, time::Duration
 };
 
 use bytemuck::Pod;
@@ -43,7 +41,9 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             }
             Direction::Receiver => {
                 let socket =
-                    UdpSocket::bind("0.0.0.0:42069")?;
+                    UdpSocket::bind(target)?;
+
+                    socket.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
 
                 Self::udp_receiver_loop(&config, socket, buffer_producer, stats);
             }
@@ -115,17 +115,21 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
         //let stats = self.get_udp_stats_sender();
 
+        println!("Inside Receiver Loop, {}", socket.local_addr().unwrap());
+        
         loop {
             let mut prod = buffer_producer.lock().unwrap();
             let cap: usize = prod.capacity().into();
-
+            
             // create the temporary network buffer needed to capture the network samples
             let mut temp_network_buffer: Box<[u8]> = vec![0u8; cap * byte_size].into_boxed_slice();
-
+            //println!("Inside Receiver Loop 2, {}", socket.local_addr().unwrap());
+            
             // Receive from the Network
             match socket.recv(&mut temp_network_buffer) {
                 Ok(received) => {
                     // Convert the buffered network samples to the specified sample format
+                    //println!("UDP Received a packet... {}", received);
                     let converted_samples: &[T] = bytemuck::cast_slice(&temp_network_buffer);
 
                     let pre_occupied_buffer = prod.occupied_len();
