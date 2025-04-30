@@ -124,7 +124,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
     fn process_input(
         //streamer_config: &StreamerConfig,
         data: &[T],
-        info: Option<&InputCallbackInfo>,
+        _info: Option<&InputCallbackInfo>,
         output: &mut HeapProd<T>,
         writer: &mut Option<DebugWavWriter>,
         selected_channels: Vec<usize>,
@@ -162,7 +162,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
     fn process_output(
         //streamer_config: &StreamerConfig,
         output: &mut [T],
-        info: Option<&OutputCallbackInfo>,
+        _info: Option<&OutputCallbackInfo>,
         input: &mut HeapCons<T>,
         writer: &mut Option<DebugWavWriter>,
         channel_count: ChannelCount,
@@ -206,7 +206,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
 #[cfg(test)]
 mod tests {
-    const MONO_WAV: &'static [u8] = include_bytes!("../../assets/mono-440hz.wav");
+    const _MONO_WAV: &'static [u8] = include_bytes!("../../assets/mono-440hz.wav");
 
     use std::sync::{
         Arc, Mutex,
@@ -223,7 +223,7 @@ mod tests {
     struct CpalAudioDebugAdapter {
         prod: Arc<Mutex<HeapProd<f32>>>,
         cons: Arc<Mutex<HeapCons<f32>>>,
-        sender: Sender<CpalStats>,
+        _sender: Sender<CpalStats>,
     }
 
     impl CpalAudioDebugAdapter {
@@ -232,12 +232,12 @@ mod tests {
 
             let (prod, cons) = buffer.split();
 
-            let (sender, _) = channel();
+            let (_sender, _) = channel();
 
             Self {
                 prod: Arc::new(Mutex::new(prod)),
                 cons: Arc::new(Mutex::new(cons)),
-                sender,
+                _sender,
             }
         }
     }

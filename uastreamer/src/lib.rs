@@ -183,12 +183,11 @@ pub fn write_debug<T: cpal::SizedSample + Send + Pod + Default + 'static>(
 
 /// Struct that holds everything the library needs
 pub struct App<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
-    direction: Direction,
     audio_buffer_prod: Arc<Mutex<HeapProd<T>>>,
     audio_buffer_cons: Arc<Mutex<HeapCons<T>>>,
     cpal_stats_sender: Sender<CpalStats>,
     udp_stats_sender: Sender<UdpStats>,
-    config: Arc<Mutex<StreamerConfig>>,
+    _config: Arc<Mutex<StreamerConfig>>,
     pub pool: ThreadPool
 }
 
@@ -203,16 +202,13 @@ impl<T> App<T> where T: cpal::SizedSample + Send + Pod + Default + Debug + 'stat
         let (cpal_stats_sender, cpal_stats_receiver) = mpsc::channel::<CpalStats>();
         let (udp_stats_sender, udp_stats_receiver) = mpsc::channel::<UdpStats>();
         
-        let direction = config.direction.clone();
-        
         (Self {
             audio_buffer_prod: Arc::new(Mutex::new(audio_buffer_prod)),
             audio_buffer_cons: Arc::new(Mutex::new(audio_buffer_cons)),
             cpal_stats_sender,
             udp_stats_sender,
-            config: Arc::new(Mutex::new(config)),
+            _config: Arc::new(Mutex::new(config)),
             pool: ThreadPool::new(5),
-            direction
         },
         AppDebug {
             cpal_stats_receiver,

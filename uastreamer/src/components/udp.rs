@@ -87,7 +87,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                 // The Casted UDP Packet
                 let udp_packet: &[u8] = bytemuck::cast_slice(&network_buffer);
 
-                let sent_s = socket.send(udp_packet).unwrap();
+                let _sent_s = socket.send(udp_packet).unwrap();
 
                 // Send statistics to the channel
                 if send_network_stats {
@@ -168,7 +168,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 #[cfg(test)]
 mod tests {
     const TEST_DATA: &'static [u8] = "hxte-thx-wxrld".as_bytes();
-    const debug_udp_address: &'static str = "127.0.0.1:12345";
+    //const _debug_udp_address: &'static str = "127.0.0.1:12345";
 
     use std::{
         net::SocketAddr,
@@ -190,7 +190,7 @@ mod tests {
     struct UdpTransportDebugAdapter {
         audio_buffer_prod: Arc<Mutex<HeapProd<u8>>>,
         audio_buffer_cons: Arc<Mutex<HeapCons<u8>>>,
-        cpal_stats_sender: Sender<CpalStats>,
+        _cpal_stats_sender: Sender<CpalStats>,
         udp_stats_sender: Sender<UdpStats>,
         //config: StreamerConfig,
         //pub pool: ThreadPool
@@ -204,14 +204,14 @@ mod tests {
 
             let (audio_buffer_prod, audio_buffer_cons) = audio_buffer.split();
 
-            let (cpal_stats_sender, cpal_stats_receiver) = channel::<CpalStats>();
+            let (_cpal_stats_sender, cpal_stats_receiver) = channel::<CpalStats>();
             let (udp_stats_sender, udp_stats_receiver) = channel::<UdpStats>();
 
             (
                 UdpTransportDebugAdapter {
                     audio_buffer_prod: Arc::new(Mutex::new(audio_buffer_prod)),
                     audio_buffer_cons: Arc::new(Mutex::new(audio_buffer_cons)),
-                    cpal_stats_sender,
+                    _cpal_stats_sender,
                     udp_stats_sender,
                 },
                 AppDebug {

@@ -118,7 +118,7 @@ pub trait TcpControlFlow {
                 target.set_port(e);
 
                 dbg!("Creating streamer for address: {}", target);
-                let streamer = self.start_stream(streamer_config, target);
+                let _streamer = self.start_stream(streamer_config, target);
 
                 //wait until the connection is disconnected or dropped
                 loop {
@@ -185,7 +185,7 @@ pub trait TcpControlFlow {
 
                 //open device
 
-                let streamer = self.start_stream(streamer_config.clone(), target_addr);
+                let _streamer = self.start_stream(streamer_config.clone(), target_addr);
 
                 let packet = TcpControlPacket {
                     #[cfg(debug_assertions)]
@@ -261,13 +261,13 @@ mod tests {
     use super::TcpControlFlow;
 
     struct TcpCommunication {
-        direction: Direction,
+
     }
     impl TcpControlFlow for TcpCommunication {
         fn start_stream(
             &self,
-            config: StreamerConfig,
-            target: SocketAddr,
+            _config: StreamerConfig,
+            _target: SocketAddr,
         ) -> anyhow::Result<()> {
             assert!(true);
             Ok(())
@@ -292,7 +292,6 @@ mod tests {
             };
 
             let server = TcpCommunication {
-                direction: Direction::Receiver,
             };
 
             server
@@ -316,7 +315,6 @@ mod tests {
             };
 
             let server = TcpCommunication {
-                direction: Direction::Sender,
             };
 
             server
