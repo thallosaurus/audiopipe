@@ -1,13 +1,15 @@
 use std::{
-    io::{BufRead, BufReader, BufWriter, Write}, net::{SocketAddr, TcpListener, TcpStream}, str::FromStr, sync::{Arc, Mutex}, time::Duration
+    io::{BufRead, BufReader, BufWriter, Write},
+    net::{SocketAddr, TcpListener, TcpStream},
+    str::FromStr,
+    sync::{Arc, Mutex},
+    time::Duration,
 };
 
 use cpal::Device;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    streamer_config::StreamerConfig, Direction,
-};
+use crate::{Direction, streamer_config::StreamerConfig};
 
 /// Provisorial Struct to initialize the TCP Control Flow
 /*#[deprecated]
@@ -56,7 +58,7 @@ impl TcpControlFlow for TcpCommunication {
 
     Ok(())
     }
-    
+
     fn get_tcp_direction(&self) -> Direction {
         self.direction
     }
@@ -106,7 +108,12 @@ pub trait TcpControlFlow {
     }
 
     /// This method gets called to start the udp stream
-    fn start_stream(&self, config: StreamerConfig, device: Arc<Mutex<Device>>, target: SocketAddr) -> anyhow::Result<()>;
+    fn start_stream(
+        &self,
+        config: StreamerConfig,
+        device: Arc<Mutex<Device>>,
+        target: SocketAddr,
+    ) -> anyhow::Result<()>;
 
     /// Read from a given TcpStream with a BufReader
     fn read_buffer(stream: &mut TcpStream) -> std::io::Result<TcpControlPacket> {
@@ -195,7 +202,7 @@ pub trait TcpControlFlow {
             _ => {
                 // TODO implement error handling here
                 todo!()
-            },
+            }
         }
 
         Ok(())
@@ -299,81 +306,99 @@ pub struct TcpControlPacket {
 
 #[cfg(test)]
 mod tests {
-    use std::{thread, time::Duration};
+    use std::{
+        net::SocketAddr,
+        str::FromStr,
+        sync::{Arc, Mutex},
+        time::Duration,
+    };
 
-    use super::*;
-    #[cfg(test)]
-    mod tests {
-        use std::{net::SocketAddr, str::FromStr, sync::{Arc, Mutex}, time::Duration};
+    use cpal::traits::{DeviceTrait, HostTrait};
+    use threadpool::ThreadPool;
 
-        use cpal::traits::{DeviceTrait, HostTrait};
-        use threadpool::ThreadPool;
+    use crate::{DEFAULT_PORT, Direction, streamer_config::StreamerConfig};
 
-        use crate::{
-            streamer_config::StreamerConfig, Direction, DEFAULT_PORT
-        };
+    use super::TcpControlFlow;
 
-        #[test]
-        fn test_protocol() {
-            let pool = ThreadPool::new(2);
-
-            pool.execute(|| {
-                let host = cpal::default_host();
-                let device = host.default_input_device().unwrap();
-                let config = device.default_input_config().unwrap();
-
-                let streamer_config = StreamerConfig {
-                    direction: Direction::Sender,
-                    channel_count: 1,
-                    cpal_config: config.into(),
-                    buffer_size: 1024,
-                    send_network_stats: true,
-                    send_cpal_stats: true,
-                    selected_channels: vec![0],
-                    port: DEFAULT_PORT,
-                };
-
-                let server = TcpCommunication {
-                    direction: Direction::Receiver,
-                };
-
-                let device = Arc::new(Mutex::new(device));
-                server
-                    .serve(SocketAddr::from_str("127.0.0.1:1234").unwrap(), streamer_config, device)
-                    .unwrap();
-            });
-
-            // Wait a second for server to be started
-            std::thread::sleep(Duration::from_secs(1));
-
-            pool.execute(|| {
-                let host = cpal::default_host();
-                let device = host.default_input_device().unwrap();
-                let config = device.default_input_config().unwrap();
-
-                let streamer_config = StreamerConfig {
-                    direction: Direction::Sender,
-                    channel_count: 1,
-                    cpal_config: config.into(),
-                    buffer_size: 1024,
-                    send_network_stats: true,
-                    send_cpal_stats: true,
-                    selected_channels: vec![0],
-                    port: DEFAULT_PORT,
-                };
-
-                let client = TcpCommunication {
-                    direction: Direction::Sender,
-                };
-
-                let device = Arc::new(Mutex::new(device));
-
-                client
-                    .serve(SocketAddr::from_str("127.0.0.1:1234").unwrap(), streamer_config, device)
-                    .unwrap();
-            });
-
-            pool.join();
+    struct TcpCommunication {
+        direction: Direction,
+    }
+    impl TcpControlFlow for TcpCommunication {
+        fn get_tcp_direction(&self) -> Direction {
+            self.direction
         }
+
+        fn start_stream(
+            &self,
+            config: StreamerConfig,
+            device: Arc<Mutex<cpal::Device>>,
+            target: SocketAddr,
+        ) -> anyhow::Result<()> {
+            assert!(true);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_protocol() {
+        let pool = ThreadPool::new(2);
+
+        pool.execute(|| {
+            let host = cpal::default_host();
+            let device = host.default_input_device().unwrap();
+            let config = device.default_input_config().unwrap();
+
+            let streamer_config = StreamerConfig {
+                direction: Direction::Sender,
+                channel_count: 1,
+                cpal_config: config.into(),
+                buffer_size: 1024,
+                send_network_stats: true,
+                send_cpal_stats: true,
+                selected_channels: vec![0],
+                port: DEFAULT_PORT,
+            };
+
+            let server = TcpCommunication {
+                direction: Direction::Receiver,
+            };
+
+            let device = Arc::new(Mutex::new(device));
+            server
+                .serve("127.0.0.1:1234", streamer_config, device)
+                .unwrap();
+        });
+
+        // Wait a second for server to be started
+        std::thread::sleep(Duration::from_secs(1));
+
+        pool.execute(|| {
+            let host = cpal::default_host();
+            let device = host.default_input_device().unwrap();
+            let config = device.default_input_config().unwrap();
+
+            let streamer_config = StreamerConfig {
+                direction: Direction::Sender,
+                channel_count: 1,
+                cpal_config: config.into(),
+                buffer_size: 1024,
+                send_network_stats: true,
+                send_cpal_stats: true,
+                selected_channels: vec![0],
+                port: DEFAULT_PORT,
+            };
+
+            let client = TcpCommunication {
+                direction: Direction::Sender,
+            };
+
+            let device = Arc::new(Mutex::new(device));
+
+            client
+                .serve("127.0.0.1:1234", streamer_config, device)
+                .unwrap();
+        });
+
+        pool.join();
     }
 }

@@ -202,3 +202,11 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
     fn get_producer(&self) -> Arc<Mutex<HeapProd<T>>>;
     fn get_consumer(&self) -> Arc<Mutex<HeapCons<T>>>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn x_test_transfer() {}
+}

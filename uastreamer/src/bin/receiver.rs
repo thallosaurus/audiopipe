@@ -6,7 +6,7 @@ use bytemuck::Pod;
 use ringbuf::{traits::Split, HeapCons, HeapProd};
 use uastreamer::{components::{
     control::TcpControlFlow, cpal::{CpalAudioFlow, CpalStats}, udp::{UdpStats, UdpStreamFlow}
-}, streamer_config::StreamerConfig, AppTest, AppTestDebug, Direction};
+}, streamer_config::StreamerConfig, App, AppDebug, Direction};
 
 use std::fmt::Debug;
 
@@ -16,7 +16,7 @@ fn main() {
 
     dbg!(&config);
 
-    let (app, debug) = AppTest::<f32>::new(config.clone());
+    let (app, debug) = App::<f32>::new(config.clone());
     app.serve("0.0.0.0:1234", config.clone(), device).unwrap();
 
     app.pool.join();

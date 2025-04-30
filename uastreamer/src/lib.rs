@@ -181,57 +181,8 @@ pub fn write_debug<T: cpal::SizedSample + Send + Pod + Default + 'static>(
     }
 }
 
-/*#[deprecated]
-struct App {
-    config: StreamerConfig,
-    _stream: Stream,
-    _udp_loop: JoinHandle<()>,
-    //direction: Direction,
-    pub net_stats: Receiver<UdpStats>,
-    pub cpal_stats: Receiver<CpalStats>,
-}
-
-impl TcpControlFlow for App {
-    fn start_stream(
-        &self,
-        config: StreamerConfig,
-        device: Arc<Mutex<Device>>,
-        target: SocketAddr,
-    ) -> Result<(), anyhow::Error> {
-        Streamer::construct::<f32>(
-            target,
-            device,
-            config,
-        )
-        .unwrap();
-        Ok(())
-    }
-    
-    fn get_tcp_direction(&self) -> Direction {
-        self.config.direction
-    }
-}
-
-impl StreamComponent for App {
-    fn construct<T: cpal::SizedSample + Send + Pod + Default + std::fmt::Debug + 'static>(
-        target: std::net::SocketAddr,
-        device: Arc<Mutex<cpal::Device>>,
-        streamer_config: StreamerConfig,
-    ) -> anyhow::Result<Box<Self>> {
-        todo!()
-    }
-
-    fn get_bufer_size(&self) -> usize {
-        todo!()
-    }
-
-    fn set_bufer_size(&self, size: usize) {
-        todo!()
-    }
-}*/
-
-
-pub struct AppTest<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
+/// Struct that holds everything the library needs
+pub struct App<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     audio_buffer_prod: Arc<Mutex<HeapProd<T>>>,
     audio_buffer_cons: Arc<Mutex<HeapCons<T>>>,
     cpal_stats_sender: Sender<CpalStats>,
@@ -240,8 +191,8 @@ pub struct AppTest<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static
     pub pool: ThreadPool
 }
 
-impl<T> AppTest<T> where T: cpal::SizedSample + Send + Pod + Default + Debug + 'static {
-    pub fn new(config: StreamerConfig) -> (Self, AppTestDebug) {
+impl<T> App<T> where T: cpal::SizedSample + Send + Pod + Default + Debug + 'static {
+    pub fn new(config: StreamerConfig) -> (Self, AppDebug) {
         dbg!(&config);
         let audio_buffer = ringbuf::HeapRb::<T>::new(config.buffer_size * config.selected_channels.len());
 
@@ -260,20 +211,20 @@ impl<T> AppTest<T> where T: cpal::SizedSample + Send + Pod + Default + Debug + '
             config,
             pool: ThreadPool::new(5),
         },
-        AppTestDebug {
+        AppDebug {
             cpal_stats_receiver,
             udp_stats_receiver,
         })
     }
 }
 
-pub struct AppTestDebug {
+pub struct AppDebug {
     cpal_stats_receiver: Receiver<CpalStats>,
     udp_stats_receiver: Receiver<UdpStats>,
 }
 
 impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> CpalAudioFlow<T>
-    for AppTest<T>
+    for App<T>
 {
     fn get_producer(&self) -> Arc<Mutex<HeapProd<T>>> {
         self.audio_buffer_prod.clone()
@@ -289,7 +240,7 @@ impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> CpalAudioFlo
 }
 
 impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> UdpStreamFlow<T>
-    for AppTest<T>
+    for App<T>
 {
     fn udp_get_producer(&self) -> Arc<Mutex<HeapProd<T>>> {
         self.audio_buffer_prod.clone()
@@ -304,7 +255,7 @@ impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> UdpStreamFlo
     }
 }
 
-impl<T> TcpControlFlow for AppTest<T> where 
+impl<T> TcpControlFlow for App<T> where 
     T: cpal::SizedSample + Send + Pod + Default + Debug + 'static
 {
     fn start_stream(&self, config: StreamerConfig, device: Arc<Mutex<cpal::Device>>, target: SocketAddr) -> anyhow::Result<()> {
@@ -337,9 +288,11 @@ impl<T> TcpControlFlow for AppTest<T> where
             let mut t = target.clone();
             t.set_ip(IpAddr::from_str("0.0.0.0").unwrap());
             t.set_port(42069);
+            let send_network_stats = config.send_network_stats;
+
 
             self.pool.execute(move || {
-                Self::construct_udp_stream(dir, uconfig, t, cons, prod, stats).unwrap();
+                Self::construct_udp_stream(dir, t, cons, prod, stats, send_network_stats).unwrap();
             });
         }
         Ok(())
