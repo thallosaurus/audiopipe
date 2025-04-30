@@ -16,20 +16,19 @@ use ratatui::{
     widgets::{Block, Paragraph, Widget},
 };
 
-use crate::{components::{cpal::CpalStats, udp::UdpStats}, Direction};
+use crate::{components::{cpal::CpalStats, udp::UdpStats}, AppDebug, Direction};
 
 pub fn tui(
     direction: Direction,
     device_name: String,
-    net_stats: Receiver<UdpStats>,
-    cpal_stats: Receiver<CpalStats>,
+    app_debug: AppDebug,
 ) -> io::Result<()> {
     let mut terminal = ratatui::init();
 
     let mut app = TuiApp {
         exit: false,
-        net_stats: Arc::new(Mutex::new(net_stats)),
-        cpal_stats: Arc::new(Mutex::new(cpal_stats)),
+        net_stats: Arc::new(Mutex::new(app_debug.udp_stats_receiver)),
+        cpal_stats: Arc::new(Mutex::new(app_debug.cpal_stats_receiver)),
         direction,
         device_name,
     };

@@ -1,7 +1,6 @@
 use std::{
     fmt::Debug,
-    net::{IpAddr, SocketAddr, UdpSocket},
-    str::FromStr,
+    net::{SocketAddr, UdpSocket},
     sync::{Arc, Mutex, mpsc::Sender},
     time::Duration,
 };
@@ -62,7 +61,6 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
     /// Entry Point for the UDP Buffer Sender.
     /// Sends the buffer when it is full
     fn udp_sender_loop(
-        //streamer_config: &StreamerConfig,
         socket: UdpSocket,
         buffer_consumer: Arc<Mutex<HeapCons<T>>>,
         stats: Sender<UdpStats>,
@@ -341,7 +339,6 @@ mod tests {
                 loop {}
             });
         }
-
         
         let mut input_prod = input_prod.lock().unwrap();
         for d in TEST_DATA.iter() {

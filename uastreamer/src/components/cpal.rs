@@ -147,20 +147,14 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             if s.on_selected_channel {
                 if !cfg!(test) {
                     output.try_push(*s.sample).unwrap();
+                    write_debug(writer, *s.sample);
                 } else {
                     output.try_push(Sample::EQUILIBRIUM).unwrap();
-                }
-
-                // If the program runs in debug mode, the debug wav writer becomes available
-
-                if let Some(writer) = writer {
-                    //writer.write_sample(*s.sample).unwrap();
                 }
             }
 
             consumed += 1;
         }
-        //println!("buffer after splitter: {}", output.occupied_len());
         consumed
     }
 

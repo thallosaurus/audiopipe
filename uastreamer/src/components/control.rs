@@ -28,6 +28,7 @@ pub trait TcpControlFlow {
         TcpStream::connect_timeout(&addr, Duration::from_secs(5))
     }
 
+    /// Serves the TCP Communication Stack
     fn serve(
         &self,
         //tcp_addr: &str,
