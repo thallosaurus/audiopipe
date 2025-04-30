@@ -13,7 +13,7 @@ use cpal::{traits::*, *};
 use hound::WavWriter;
 
 use ringbuf::{traits::{Observer, Split}, HeapCons, HeapProd};
-use streamer_config::StreamerConfig;
+use streamer_config::{get_cpal_config, StreamerConfig};
 use threadpool::ThreadPool;
 
 /// Default Port if none is specified
@@ -183,11 +183,12 @@ pub fn write_debug<T: cpal::SizedSample + Send + Pod + Default + 'static>(
 
 /// Struct that holds everything the library needs
 pub struct App<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
+    direction: Direction,
     audio_buffer_prod: Arc<Mutex<HeapProd<T>>>,
     audio_buffer_cons: Arc<Mutex<HeapCons<T>>>,
     cpal_stats_sender: Sender<CpalStats>,
     udp_stats_sender: Sender<UdpStats>,
-    config: StreamerConfig,
+    config: Arc<Mutex<StreamerConfig>>,
     pub pool: ThreadPool
 }
 
@@ -195,21 +196,23 @@ impl<T> App<T> where T: cpal::SizedSample + Send + Pod + Default + Debug + 'stat
     pub fn new(config: StreamerConfig) -> (Self, AppDebug) {
         dbg!(&config);
         let audio_buffer = ringbuf::HeapRb::<T>::new(config.buffer_size * config.selected_channels.len());
-
         println!("{}", audio_buffer.capacity());
-
+        
         let (audio_buffer_prod, audio_buffer_cons) = audio_buffer.split();
-
+        
         let (cpal_stats_sender, cpal_stats_receiver) = mpsc::channel::<CpalStats>();
         let (udp_stats_sender, udp_stats_receiver) = mpsc::channel::<UdpStats>();
+        
+        let direction = config.direction.clone();
         
         (Self {
             audio_buffer_prod: Arc::new(Mutex::new(audio_buffer_prod)),
             audio_buffer_cons: Arc::new(Mutex::new(audio_buffer_cons)),
             cpal_stats_sender,
             udp_stats_sender,
-            config,
+            config: Arc::new(Mutex::new(config)),
             pool: ThreadPool::new(5),
+            direction
         },
         AppDebug {
             cpal_stats_receiver,
@@ -258,7 +261,7 @@ impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> UdpStreamFlo
 impl<T> TcpControlFlow for App<T> where 
     T: cpal::SizedSample + Send + Pod + Default + Debug + 'static
 {
-    fn start_stream(&self, config: StreamerConfig, device: Arc<Mutex<cpal::Device>>, target: SocketAddr) -> anyhow::Result<()> {
+    fn start_stream(&self, config: StreamerConfig, target: SocketAddr) -> anyhow::Result<()> {
         //start video capture and udp sender here
         let dir = config.direction;
         {
@@ -267,10 +270,14 @@ impl<T> TcpControlFlow for App<T> where
             let prod = self.get_producer();
             let cons = self.get_consumer();
             
-            let sconfig = config.clone();
+            let streamer_config = config.clone();
+
             self.pool.execute(move || {
-                let device = device.lock().unwrap();
-                let stream = Self::construct_stream(dir, &device, sconfig, stats, prod, cons).unwrap();
+                // TODO maybe i should initialize the device here and don't store it on the streamer config
+                let (d, stream_config) = get_cpal_config(config.direction, config.program_args.audio_host, config.program_args.device).unwrap();
+
+                //let device = device.lock().unwrap();
+                let _stream = Self::construct_stream(dir, &d, stream_config, streamer_config, stats, prod, cons).unwrap();
                 loop {
                     //block
                 }
@@ -282,24 +289,21 @@ impl<T> TcpControlFlow for App<T> where
             let prod = self.udp_get_producer();
             let cons = self.udp_get_consumer();
             let stats = self.get_udp_stats_sender();
-            let uconfig = config.clone();
             dbg!(&target);
 
             let mut t = target.clone();
             t.set_ip(IpAddr::from_str("0.0.0.0").unwrap());
             t.set_port(42069);
-            let send_network_stats = config.send_network_stats;
-
 
             self.pool.execute(move || {
-                Self::construct_udp_stream(dir, t, cons, prod, stats, send_network_stats).unwrap();
+                Self::construct_udp_stream(dir, t, cons, prod, stats, config.send_stats).unwrap();
             });
         }
         Ok(())
     }
     
     fn get_tcp_direction(&self) -> Direction {
-        self.config.direction
+        self.direction  // if it works it works and if it makes my life better i want it more
     }
 }
 

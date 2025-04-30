@@ -11,59 +11,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Direction, streamer_config::StreamerConfig};
 
-/// Provisorial Struct to initialize the TCP Control Flow
-/*#[deprecated]
-pub struct TcpCommunication {
-    pub direction: Direction,
-}
-
-impl TcpCommunication {
-    pub fn serve(
-        &self,
-        tcp_addr: SocketAddr,
-        streamer_config: StreamerConfig,
-        device: Arc<Mutex<Device>>,
-    ) -> std::io::Result<()> {
-        match self.direction {
-            Direction::Sender => {
-                let mut stream = TcpCommunication::create_new_tcp_stream(tcp_addr)?;
-                println!("connecting to {}", tcp_addr);
-                self.sender_loop(tcp_addr, &mut stream, streamer_config, device)?;
-            }
-            Direction::Receiver => {
-                let listener = TcpCommunication::create_new_tcp_listener(tcp_addr)?;
-                println!("listening to {}", tcp_addr);
-                self.receiver_loop(tcp_addr, listener, streamer_config, device)?;
-            }
-        }
-        Ok(())
-    }
-}
-
-impl TcpControlFlow for TcpCommunication {
-    fn start_stream(
-        &self,
-        streamer_config: StreamerConfig,
-        device: Arc<Mutex<cpal::Device>>,
-        target: SocketAddr,
-    ) -> Result<(), anyhow::Error> {
-        // TODO Implement more data types
-        // locked to f32 for now
-        Streamer::construct::<f32>(
-            target,
-            device,
-            streamer_config,
-        )
-        .unwrap();
-
-    Ok(())
-    }
-
-    fn get_tcp_direction(&self) -> Direction {
-        self.direction
-    }
-}*/
-
 /// Contains methods that implement the tcp control functionality
 ///
 /// First, the sender sends a [TcpControlState::Connect] packet with its own configuration
@@ -87,21 +34,22 @@ pub trait TcpControlFlow {
 
     fn serve(
         &self,
-        tcp_addr: &str,
+        //tcp_addr: &str,
         streamer_config: StreamerConfig,
-        device: Arc<Mutex<Device>>,
     ) -> std::io::Result<()> {
-        let target = SocketAddr::from_str(tcp_addr).unwrap();
+        let addr = streamer_config.clone().program_args.network_host.unwrap();
+
+        let target = SocketAddr::from_str(&addr).unwrap();
         match self.get_tcp_direction() {
             Direction::Sender => {
                 let mut stream = Self::create_new_tcp_stream(target)?;
-                println!("connecting to {}", tcp_addr);
-                self.sender_loop(target, &mut stream, streamer_config, device)?;
+                println!("connecting to {}", target);
+                self.sender_loop(target, &mut stream, streamer_config)?;
             }
             Direction::Receiver => {
                 let listener = Self::create_new_tcp_listener(target)?;
-                println!("listening to {}", tcp_addr);
-                self.receiver_loop(target, listener, streamer_config, device)?;
+                println!("listening to {}", target);
+                self.receiver_loop(target, listener, streamer_config)?;
             }
         }
         Ok(())
@@ -111,7 +59,6 @@ pub trait TcpControlFlow {
     fn start_stream(
         &self,
         config: StreamerConfig,
-        device: Arc<Mutex<Device>>,
         target: SocketAddr,
     ) -> anyhow::Result<()>;
 
@@ -147,7 +94,6 @@ pub trait TcpControlFlow {
         target_addr: SocketAddr,
         stream: &mut TcpStream,
         streamer_config: StreamerConfig,
-        device: Arc<Mutex<Device>>,
     ) -> std::io::Result<()> {
         // Start by connecting
         let packet = TcpControlPacket {
@@ -175,7 +121,7 @@ pub trait TcpControlFlow {
                 target.set_port(e);
 
                 dbg!("Creating streamer for address: {}", target);
-                let streamer = self.start_stream(streamer_config, device, target);
+                let streamer = self.start_stream(streamer_config, target);
 
                 //wait until the connection is disconnected or dropped
                 loop {
@@ -223,10 +169,10 @@ pub trait TcpControlFlow {
         target_addr: SocketAddr,
         listener: TcpListener,
         streamer_config: StreamerConfig,
-        device: Arc<Mutex<Device>>,
+        //device: Arc<Mutex<Device>>,
     ) -> std::io::Result<()> {
         for stream in listener.incoming() {
-            let device = device.clone();
+            //let device = device.clone();
             println!("Connected");
 
             let mut stream = stream?;
@@ -242,7 +188,7 @@ pub trait TcpControlFlow {
 
                 //open device
 
-                let streamer = self.start_stream(streamer_config.clone(), device, target_addr);
+                let streamer = self.start_stream(streamer_config.clone(), target_addr);
 
                 let packet = TcpControlPacket {
                     #[cfg(debug_assertions)]
@@ -308,15 +254,12 @@ pub struct TcpControlPacket {
 mod tests {
     use std::{
         net::SocketAddr,
-        str::FromStr,
-        sync::{Arc, Mutex},
         time::Duration,
     };
 
-    use cpal::traits::{DeviceTrait, HostTrait};
     use threadpool::ThreadPool;
 
-    use crate::{DEFAULT_PORT, Direction, streamer_config::StreamerConfig};
+    use crate::{args::NewCliArgs, streamer_config::StreamerConfig, Direction};
 
     use super::TcpControlFlow;
 
@@ -331,7 +274,6 @@ mod tests {
         fn start_stream(
             &self,
             config: StreamerConfig,
-            device: Arc<Mutex<cpal::Device>>,
             target: SocketAddr,
         ) -> anyhow::Result<()> {
             assert!(true);
@@ -344,28 +286,24 @@ mod tests {
         let pool = ThreadPool::new(2);
 
         pool.execute(|| {
-            let host = cpal::default_host();
-            let device = host.default_input_device().unwrap();
-            let config = device.default_input_config().unwrap();
 
-            let streamer_config = StreamerConfig {
-                direction: Direction::Sender,
-                channel_count: 1,
-                cpal_config: config.into(),
+            let args = NewCliArgs::default();
+
+            let sconfig = StreamerConfig {
+                direction: Direction::Receiver,
                 buffer_size: 1024,
-                send_network_stats: true,
-                send_cpal_stats: true,
-                selected_channels: vec![0],
-                port: DEFAULT_PORT,
+                send_stats: false,
+                selected_channels: vec![0, 1],
+                port: 12345,
+                program_args: args,
             };
 
             let server = TcpCommunication {
                 direction: Direction::Receiver,
             };
 
-            let device = Arc::new(Mutex::new(device));
             server
-                .serve("127.0.0.1:1234", streamer_config, device)
+                .serve(sconfig)
                 .unwrap();
         });
 
@@ -373,29 +311,23 @@ mod tests {
         std::thread::sleep(Duration::from_secs(1));
 
         pool.execute(|| {
-            let host = cpal::default_host();
-            let device = host.default_input_device().unwrap();
-            let config = device.default_input_config().unwrap();
+            let args = NewCliArgs::default();
 
-            let streamer_config = StreamerConfig {
+            let sconfig = StreamerConfig {
                 direction: Direction::Sender,
-                channel_count: 1,
-                cpal_config: config.into(),
                 buffer_size: 1024,
-                send_network_stats: true,
-                send_cpal_stats: true,
-                selected_channels: vec![0],
-                port: DEFAULT_PORT,
+                send_stats: false,
+                selected_channels: vec![0, 1],
+                port: 12345,
+                program_args: args,
             };
 
-            let client = TcpCommunication {
+            let server = TcpCommunication {
                 direction: Direction::Sender,
             };
 
-            let device = Arc::new(Mutex::new(device));
-
-            client
-                .serve("127.0.0.1:1234", streamer_config, device)
+            server
+                .serve(sconfig)
                 .unwrap();
         });
 
