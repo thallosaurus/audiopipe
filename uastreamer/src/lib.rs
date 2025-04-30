@@ -13,7 +13,7 @@ use cpal::{traits::*, *};
 use hound::WavWriter;
 
 use ringbuf::{traits::{Observer, Split}, HeapCons, HeapProd};
-use streamer_config::{get_cpal_config, StreamerConfig};
+use config::{get_cpal_config, StreamerConfig};
 use threadpool::ThreadPool;
 
 /// Default Port if none is specified
@@ -41,12 +41,12 @@ pub mod args;
 pub mod splitter;
 
 /// Holds the config struct which gets passed around
-pub mod streamer_config;
+pub mod config;
 
 /// Holds all flows this app offers
 pub mod components;
 
-/// Defines the behaivior of the stream
+/// Defines the behavior of the stream
 ///
 /// Sender: Captures from an audio input stream and sends it over the network
 /// Receiver: Receives from the network and outputs it to a audio output stream
@@ -300,10 +300,6 @@ impl<T> TcpControlFlow for App<T> where
             });
         }
         Ok(())
-    }
-    
-    fn get_tcp_direction(&self) -> Direction {
-        self.direction  // if it works it works and if it makes my life better i want it more
     }
 }
 

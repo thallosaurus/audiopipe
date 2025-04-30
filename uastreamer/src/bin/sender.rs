@@ -1,5 +1,5 @@
 use uastreamer::{
-    App, Direction, components::control::TcpControlFlow, streamer_config::StreamerConfig,
+    App, Direction, components::control::TcpControlFlow, config::StreamerConfig,
 };
 
 fn main() {

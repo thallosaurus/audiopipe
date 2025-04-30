@@ -2,14 +2,12 @@ use std::{
     io::{BufRead, BufReader, BufWriter, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     str::FromStr,
-    sync::{Arc, Mutex},
     time::Duration,
 };
 
-use cpal::Device;
 use serde::{Deserialize, Serialize};
 
-use crate::{Direction, streamer_config::StreamerConfig};
+use crate::{Direction, config::StreamerConfig};
 
 /// Contains methods that implement the tcp control functionality
 ///
@@ -30,8 +28,6 @@ pub trait TcpControlFlow {
         TcpStream::connect_timeout(&addr, Duration::from_secs(5))
     }
 
-    fn get_tcp_direction(&self) -> Direction;
-
     fn serve(
         &self,
         //tcp_addr: &str,
@@ -40,7 +36,7 @@ pub trait TcpControlFlow {
         let addr = streamer_config.clone().program_args.network_host.unwrap();
 
         let target = SocketAddr::from_str(&addr).unwrap();
-        match self.get_tcp_direction() {
+        match streamer_config.direction {
             Direction::Sender => {
                 let mut stream = Self::create_new_tcp_stream(target)?;
                 println!("connecting to {}", target);
@@ -259,7 +255,7 @@ mod tests {
 
     use threadpool::ThreadPool;
 
-    use crate::{args::NewCliArgs, streamer_config::StreamerConfig, Direction};
+    use crate::{args::NewCliArgs, config::StreamerConfig, Direction};
 
     use super::TcpControlFlow;
 
@@ -267,10 +263,6 @@ mod tests {
         direction: Direction,
     }
     impl TcpControlFlow for TcpCommunication {
-        fn get_tcp_direction(&self) -> Direction {
-            self.direction
-        }
-
         fn start_stream(
             &self,
             config: StreamerConfig,

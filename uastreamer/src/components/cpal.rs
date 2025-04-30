@@ -1,21 +1,19 @@
 use bytemuck::Pod;
-use core::net;
 use cpal::{
-    traits::DeviceTrait, BuildStreamError, ChannelCount, InputCallbackInfo, OutputCallbackInfo, Sample, Stream, StreamConfig
+    ChannelCount, InputCallbackInfo, OutputCallbackInfo, Sample, Stream, StreamConfig,
+    traits::DeviceTrait,
 };
-use ringbuf::{
-    HeapCons, HeapProd,
-    traits::{Observer, Producer},
-};
+use ringbuf::{HeapCons, HeapProd, traits::Producer};
 use std::{
     fmt::Debug,
     sync::{Arc, Mutex, mpsc::Sender},
 };
 
 use crate::{
-    DebugWavWriter, Direction, create_wav_writer,
+    DebugWavWriter, Direction,
+    config::StreamerConfig,
+    create_wav_writer,
     splitter::{ChannelMerger, ChannelSplitter},
-    streamer_config::StreamerConfig,
     write_debug,
 };
 
@@ -57,8 +55,14 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
                         //let config = config.clone();
                         let channel_count = cpal_config.channels;
-                        let consumed =
-                            Self::process_input(data, info, prod.as_mut(), &mut writer, config.selected_channels.clone(), channel_count);
+                        let consumed = Self::process_input(
+                            data,
+                            Some(info),
+                            prod.as_mut(),
+                            &mut writer,
+                            config.selected_channels.clone(),
+                            channel_count,
+                        );
 
                         if config.send_stats {
                             stats
@@ -90,12 +94,11 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                         let consumed = Self::process_output(
                             //&config,
                             output,
-                            info,
+                            Some(info),
                             cons.as_mut(),
                             &mut writer,
                             channel_count,
-                            selected_channels
-                            //cpal_tx.clone(),
+                            selected_channels, //cpal_tx.clone(),
                         );
 
                         // Sends stats about the current operation back to the front
@@ -121,12 +124,11 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
     fn process_input(
         //streamer_config: &StreamerConfig,
         data: &[T],
-        info: &InputCallbackInfo,
+        info: Option<&InputCallbackInfo>,
         output: &mut HeapProd<T>,
         writer: &mut Option<DebugWavWriter>,
         selected_channels: Vec<usize>,
-        channel_count: u16
-        //stats: Arc<Sender<CpalStats>>,
+        channel_count: u16, //stats: Arc<Sender<CpalStats>>,
     ) -> usize {
         let mut consumed = 0;
 
@@ -153,7 +155,6 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
                 if let Some(writer) = writer {
                     //writer.write_sample(*s.sample).unwrap();
-                    
                 }
             }
 
@@ -167,7 +168,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
     fn process_output(
         //streamer_config: &StreamerConfig,
         output: &mut [T],
-        info: &OutputCallbackInfo,
+        info: Option<&OutputCallbackInfo>,
         input: &mut HeapCons<T>,
         writer: &mut Option<DebugWavWriter>,
         channel_count: ChannelCount,
@@ -179,13 +180,8 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         // Pops the oldest element from the front and writes it to the sound buffer
         // consuming only the bytes needed
 
-        let mut merger = ChannelMerger::new(
-            input,
-            &selected_channels,
-            channel_count,
-            output.len(),
-        )
-        .unwrap();
+        let mut merger =
+            ChannelMerger::new(input, &selected_channels, channel_count, output.len()).unwrap();
 
         for sample in output.iter_mut() {
             let s = merger.next();
@@ -216,8 +212,67 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    const MONO_WAV: &'static [u8] = include_bytes!("../../assets/mono-440hz.wav");
+
+    use std::sync::{
+        Arc, Mutex,
+        mpsc::{Sender, channel},
+    };
+
+    use hound::{WavIntoSamples, WavReader};
+    use ringbuf::{
+        traits::{Observer, Producer, Split}, HeapCons, HeapProd, HeapRb
+    };
+
+    use super::{CpalAudioFlow, CpalStats};
+
+    struct CpalAudioDebugAdapter {
+        prod: Arc<Mutex<HeapProd<f32>>>,
+        cons: Arc<Mutex<HeapCons<f32>>>,
+        sender: Sender<CpalStats>,
+    }
+
+    impl CpalAudioDebugAdapter {
+        pub fn new(buffer_size: usize) -> Self {
+            let buffer = HeapRb::<f32>::new(buffer_size);
+
+            let (prod, cons) = buffer.split();
+
+            let (sender, _) = channel();
+
+            Self {
+                prod: Arc::new(Mutex::new(prod)),
+                cons: Arc::new(Mutex::new(cons)),
+                sender,
+            }
+        }
+    }
+
+    impl CpalAudioFlow<f32> for CpalAudioDebugAdapter {
+        fn get_cpal_stats_sender(&self) -> std::sync::mpsc::Sender<super::CpalStats> {
+            todo!()
+        }
+
+        fn get_producer(&self) -> Arc<Mutex<HeapProd<f32>>> {
+            self.prod.clone()
+        }
+
+        fn get_consumer(&self) -> Arc<Mutex<HeapCons<f32>>> {
+            self.cons.clone()
+        }
+    }
 
     #[test]
-    fn x_test_transfer() {}
+    fn test_mono() {
+        let data = vec![2f32; 1024];
+        let adapter = CpalAudioDebugAdapter::new(1024);
+
+        let mut prod = adapter.prod.lock().unwrap();
+        
+        CpalAudioDebugAdapter::process_input(data.as_slice(), None, &mut prod, &mut None, vec![0], 1);
+        
+        let cons = adapter.cons.lock().unwrap();
+
+        assert_eq!(cons.occupied_len(), data.len());
+    }
 }

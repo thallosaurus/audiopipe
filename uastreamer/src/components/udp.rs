@@ -34,7 +34,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
     ) -> std::io::Result<()> {
         match direction {
             Direction::Sender => {
-                let socket = UdpSocket::bind("0.0.0.0:0")?;
+                let socket = UdpSocket::bind(target)?;
                 //let f = format!("{}:{}", target, config.port);
                 println!("[FLOW] Connecting UDP to {}", target);
                 socket.connect(target)?;
@@ -240,6 +240,9 @@ mod tests {
 
     #[test]
     fn flow_sends_when_buffer_is_full() {
+        let sender_addr = SocketAddr::from_str("127.0.0.1:0").unwrap();
+        let receiver_addr = SocketAddr::from_str("127.0.0.1:0").unwrap();
+
         let (sender, _) = UdpTransportDebugAdapter::new(TEST_DATA.len());
         let (receiver, _) = UdpTransportDebugAdapter::new(TEST_DATA.len());
 
@@ -254,7 +257,7 @@ mod tests {
             thread::spawn(move || {
                 UdpTransportDebugAdapter::construct_udp_stream(
                     crate::Direction::Receiver,
-                    SocketAddr::from_str(debug_udp_address).unwrap(),
+                    receiver_addr,
                     cons,
                     prod,
                     receiver.udp_stats_sender,
@@ -269,7 +272,7 @@ mod tests {
             thread::spawn(move || {
                 UdpTransportDebugAdapter::construct_udp_stream(
                     crate::Direction::Sender,
-                    SocketAddr::from_str(debug_udp_address).unwrap(),
+                    sender_addr,
                     cons,
                     prod,
                     sender.udp_stats_sender,
@@ -296,6 +299,9 @@ mod tests {
 
     #[test]
     fn flow_wont_send_when_buffer_is_not_full() {
+        let sender_addr = SocketAddr::from_str("127.0.0.1:0").unwrap();
+        let receiver_addr = SocketAddr::from_str("127.0.0.1:0").unwrap();
+
         let (sender, _) = UdpTransportDebugAdapter::new(1024);
         let (receiver, _) = UdpTransportDebugAdapter::new(1024);
 
@@ -310,7 +316,7 @@ mod tests {
             thread::spawn(move || {
                 UdpTransportDebugAdapter::construct_udp_stream(
                     crate::Direction::Receiver,
-                    SocketAddr::from_str(debug_udp_address).unwrap(),
+                    receiver_addr,
                     cons,
                     prod,
                     receiver.udp_stats_sender,
@@ -325,7 +331,7 @@ mod tests {
             thread::spawn(move || {
                 UdpTransportDebugAdapter::construct_udp_stream(
                     crate::Direction::Sender,
-                    SocketAddr::from_str(debug_udp_address).unwrap(),
+                    sender_addr,
                     cons,
                     prod,
                     sender.udp_stats_sender,
