@@ -2,7 +2,7 @@
 pub mod control;
 
 /// Holds all things streamer related
-pub mod streamer;
+//pub mod streamer;
 
 pub mod cpal;
 

@@ -10,13 +10,8 @@ use std::{
 };
 
 use crate::{
-    DebugWavWriter, create_wav_writer,
-    splitter::{ChannelMerger, ChannelSplitter},
-    streamer_config::StreamerConfig,
-    write_debug,
+    create_wav_writer, splitter::{ChannelMerger, ChannelSplitter}, streamer_config::StreamerConfig, write_debug, DebugWavWriter, Direction
 };
-
-use super::streamer::Direction;
 
 /// Stats which get sent during each CPAL Callback Invocation after the main action is done
 #[derive(Default)]

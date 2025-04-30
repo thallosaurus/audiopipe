@@ -6,12 +6,11 @@ use cpal::Device;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    streamer::{Direction, StreamComponent, Streamer},
-    streamer_config::StreamerConfig,
+    streamer_config::StreamerConfig, Direction,
 };
 
 /// Provisorial Struct to initialize the TCP Control Flow
-#[deprecated]
+/*#[deprecated]
 pub struct TcpCommunication {
     pub direction: Direction,
 }
@@ -61,7 +60,7 @@ impl TcpControlFlow for TcpCommunication {
     fn get_tcp_direction(&self) -> Direction {
         self.direction
     }
-}
+}*/
 
 /// Contains methods that implement the tcp control functionality
 ///
@@ -93,12 +92,12 @@ pub trait TcpControlFlow {
         let target = SocketAddr::from_str(tcp_addr).unwrap();
         match self.get_tcp_direction() {
             Direction::Sender => {
-                let mut stream = TcpCommunication::create_new_tcp_stream(target)?;
+                let mut stream = Self::create_new_tcp_stream(target)?;
                 println!("connecting to {}", tcp_addr);
                 self.sender_loop(target, &mut stream, streamer_config, device)?;
             }
             Direction::Receiver => {
-                let listener = TcpCommunication::create_new_tcp_listener(target)?;
+                let listener = Self::create_new_tcp_listener(target)?;
                 println!("listening to {}", tcp_addr);
                 self.receiver_loop(target, listener, streamer_config, device)?;
             }
@@ -311,10 +310,7 @@ mod tests {
         use threadpool::ThreadPool;
 
         use crate::{
-            DEFAULT_PORT,
-            components::control::TcpCommunication,
-            streamer::{self, Direction},
-            streamer_config::StreamerConfig,
+            streamer_config::StreamerConfig, Direction, DEFAULT_PORT
         };
 
         #[test]
@@ -327,7 +323,7 @@ mod tests {
                 let config = device.default_input_config().unwrap();
 
                 let streamer_config = StreamerConfig {
-                    direction: streamer::Direction::Sender,
+                    direction: Direction::Sender,
                     channel_count: 1,
                     cpal_config: config.into(),
                     buffer_size: 1024,
@@ -356,7 +352,7 @@ mod tests {
                 let config = device.default_input_config().unwrap();
 
                 let streamer_config = StreamerConfig {
-                    direction: streamer::Direction::Sender,
+                    direction: Direction::Sender,
                     channel_count: 1,
                     cpal_config: config.into(),
                     buffer_size: 1024,

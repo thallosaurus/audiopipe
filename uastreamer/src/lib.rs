@@ -7,7 +7,6 @@ use bytemuck::Pod;
 use components::{
     control::TcpControlFlow,
     cpal::{CpalAudioFlow, CpalStats},
-    streamer::{self, Direction, StreamComponent, Streamer},
     udp::{UdpStats, UdpStreamFlow},
 };
 use cpal::{traits::*, *};
@@ -46,6 +45,16 @@ pub mod streamer_config;
 
 /// Holds all flows this app offers
 pub mod components;
+
+/// Defines the behaivior of the stream
+///
+/// Sender: Captures from an audio input stream and sends it over the network
+/// Receiver: Receives from the network and outputs it to a audio output stream
+#[derive(Debug, Clone, Copy)]
+pub enum Direction {
+    Sender,
+    Receiver,
+}
 
 /// Enumerate all available devices on the system
 pub fn enumerate(direction: Direction, host: &Host) -> anyhow::Result<()> {
@@ -172,7 +181,7 @@ pub fn write_debug<T: cpal::SizedSample + Send + Pod + Default + 'static>(
     }
 }
 
-#[deprecated]
+/*#[deprecated]
 struct App {
     config: StreamerConfig,
     _stream: Stream,
@@ -219,7 +228,7 @@ impl StreamComponent for App {
     fn set_bufer_size(&self, size: usize) {
         todo!()
     }
-}
+}*/
 
 
 pub struct AppTest<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {

@@ -8,9 +8,7 @@ use ringbuf::{
     traits::{Consumer, Observer, Producer},
 };
 
-use crate::streamer_config::StreamerConfig;
-
-use super::streamer::Direction;
+use crate::{streamer_config::StreamerConfig, Direction};
 
 /// Stats which get sent after each UDP Event
 #[derive(Default)]

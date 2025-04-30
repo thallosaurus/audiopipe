@@ -7,7 +7,7 @@ use cpal::{
 };
 
 use crate::{
-    args::{ReceiverCliArgs, SenderCliArgs}, search_device, search_for_host, streamer::{self, Direction}, DEFAULT_PORT, SENDER_BUFFER_SIZE
+    args::{ReceiverCliArgs, SenderCliArgs}, search_device, search_for_host, Direction, DEFAULT_PORT, SENDER_BUFFER_SIZE
 };
 
 #[derive(Clone, Debug)]
@@ -62,7 +62,7 @@ impl StreamerConfig {
                 };
 
                 let sconfig = StreamerConfig {
-                    direction: streamer::Direction::Sender,
+                    direction,
                     channel_count: cpal_config.channels,
                     cpal_config: cpal_config,
                     buffer_size: buf_size as usize,
@@ -110,7 +110,7 @@ impl StreamerConfig {
                 };
 
                 let sconfig = StreamerConfig {
-                    direction: streamer::Direction::Receiver,
+                    direction,
                     channel_count: cpal_config.channels,
                     cpal_config: cpal_config,
                     buffer_size: buf_size as usize,
