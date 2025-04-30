@@ -1,4 +1,3 @@
-use std::sync::{Arc, Mutex};
 
 use clap::Parser;
 use cpal::{

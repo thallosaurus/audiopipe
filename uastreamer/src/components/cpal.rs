@@ -213,9 +213,9 @@ mod tests {
         mpsc::{Sender, channel},
     };
 
-    use hound::{WavIntoSamples, WavReader};
+    
     use ringbuf::{
-        traits::{Observer, Producer, Split}, HeapCons, HeapProd, HeapRb
+        traits::{Observer, Split}, HeapCons, HeapProd, HeapRb
     };
 
     use super::{CpalAudioFlow, CpalStats};

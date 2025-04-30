@@ -4,7 +4,6 @@ use std::{
     time::Duration,
 };
 
-use cpal::{Device, traits::DeviceTrait};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     DefaultTerminal, Frame,

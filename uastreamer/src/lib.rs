@@ -1,5 +1,5 @@
 use std::{
-    fmt::Debug, fs::{create_dir_all, File}, io::BufWriter, net::{IpAddr, SocketAddr}, str::FromStr, sync::{mpsc::{self, Receiver, Sender}, Arc, Mutex}, thread::JoinHandle, time::SystemTime
+    fmt::Debug, fs::{create_dir_all, File}, io::BufWriter, net::{IpAddr, SocketAddr}, str::FromStr, sync::{mpsc::{self, Receiver, Sender}, Arc, Mutex}, time::SystemTime
 };
 
 use bytemuck::Pod;
@@ -305,7 +305,7 @@ impl<T> TcpControlFlow for App<T> where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    
 
     #[test]
     fn x_test_transfer() {}
