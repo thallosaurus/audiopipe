@@ -1,7 +1,7 @@
 use std::{
     fmt::Debug,
     net::{SocketAddr, UdpSocket},
-    sync::{Arc, Mutex, mpsc::Sender},
+    sync::{mpsc::{Receiver, Sender}, Arc, Mutex},
     time::Duration,
 };
 
@@ -30,6 +30,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         buffer_producer: Arc<Mutex<HeapProd<T>>>,
         stats: Sender<UdpStats>,
         send_network_stats: bool,
+        udp_channel: Receiver<bool>
     ) -> std::io::Result<()> {
         match direction {
             Direction::Sender => {
@@ -38,7 +39,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                 println!("[FLOW] Connecting UDP to {}", target);
                 socket.connect(target)?;
 
-                Self::udp_sender_loop(socket, buffer_consumer, stats, send_network_stats);
+                Self::udp_sender_loop(socket, buffer_consumer, stats, send_network_stats, udp_channel);
             }
             Direction::Receiver => {
                 let socket = UdpSocket::bind(target)?;
@@ -47,7 +48,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                     .set_read_timeout(Some(Duration::from_secs(3)))
                     .unwrap();
 
-                Self::udp_receiver_loop(socket, buffer_producer, stats, send_network_stats);
+                Self::udp_receiver_loop(socket, buffer_producer, stats, send_network_stats, udp_channel);
             }
         }
 
@@ -65,9 +66,15 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         buffer_consumer: Arc<Mutex<HeapCons<T>>>,
         stats: Sender<UdpStats>,
         send_network_stats: bool,
+        udp_channel: Receiver<bool>
     ) {
         loop {
             let mut buffer_consumer = buffer_consumer.lock().unwrap();
+
+            if let Ok(msg) = udp_channel.try_recv() {
+                dbg!("Exiting UDP Loop");
+                break;
+            }
 
             // Only send the network package if the network buffer is full to avoid partial sends
             if buffer_consumer.is_full() {
@@ -111,6 +118,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         buffer_producer: Arc<Mutex<HeapProd<T>>>,
         stats: Sender<UdpStats>,
         send_network_stats: bool,
+        udp_channel: Receiver<bool>
     ) {
         // How big is one byte?
         let byte_size = size_of::<T>();
@@ -119,11 +127,17 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
         //let stats = self.get_udp_stats_sender();
 
-        
         loop {
             //println!("Inside Receiver Loop, {}", socket.local_addr().unwrap());
             let mut prod = buffer_producer.lock().unwrap();
             let cap: usize = prod.capacity().into();
+
+            if let Ok(msg) = udp_channel.try_recv() {
+                if msg {
+                    dbg!("Exiting UDP Loop");
+                    break;
+                }
+            }
 
             dbg!(cap);
 
@@ -174,13 +188,16 @@ mod tests {
         net::SocketAddr,
         str::FromStr,
         sync::{
-            mpsc::{channel, Sender}, Arc, Mutex
+            Arc, Mutex,
+            mpsc::{Sender, channel},
         },
-        thread, time::Duration,
+        thread,
+        time::Duration,
     };
 
     use ringbuf::{
-        traits::{Observer, Producer, Split}, HeapCons, HeapProd
+        HeapCons, HeapProd,
+        traits::{Observer, Producer, Split},
     };
 
     use crate::{AppDebug, components::cpal::CpalStats};
@@ -247,9 +264,11 @@ mod tests {
         let input_prod = sender.audio_buffer_prod.clone();
         let output_cons = receiver.audio_buffer_cons.clone();
 
-        {
+        
             let cons = receiver.audio_buffer_cons.clone();
             let prod = receiver.audio_buffer_prod.clone();
+
+            let (tx1, rx) = channel::<bool>();
 
             // Receiver
             thread::spawn(move || {
@@ -260,6 +279,7 @@ mod tests {
                     prod,
                     receiver.udp_stats_sender,
                     false,
+                    rx
                 )
                 .unwrap();
                 loop {}
@@ -267,6 +287,9 @@ mod tests {
 
             let cons = sender.audio_buffer_cons.clone();
             let prod = sender.audio_buffer_prod.clone();
+
+            let (tx2, rx) = channel::<bool>();
+
             thread::spawn(move || {
                 UdpTransportDebugAdapter::construct_udp_stream(
                     crate::Direction::Sender,
@@ -275,40 +298,45 @@ mod tests {
                     prod,
                     sender.udp_stats_sender,
                     false,
+                    rx
                 )
                 .unwrap();
                 loop {}
             });
-        }
-
         
+
         let mut input_prod = input_prod.lock().unwrap();
         for d in TEST_DATA.iter() {
             input_prod.try_push(*d).unwrap();
         }
-        
+
         std::thread::sleep(Duration::from_secs(1));
 
         let output_cons = output_cons.lock().unwrap();
         //cons.pop_slice(&mut v);
         assert_eq!(input_prod.occupied_len(), 0);
         assert_eq!(output_cons.occupied_len(), TEST_DATA.len());
+        tx1.send(true).unwrap();
+        tx2.send(true).unwrap();
     }
 
     #[test]
     fn flow_wont_send_when_buffer_is_not_full() {
         let sender_addr = SocketAddr::from_str("127.0.0.1:0").unwrap();
         let receiver_addr = SocketAddr::from_str("127.0.0.1:0").unwrap();
-
+        
         let (sender, _) = UdpTransportDebugAdapter::new(1024);
         let (receiver, _) = UdpTransportDebugAdapter::new(1024);
-
+        
         let input_prod = sender.audio_buffer_prod.clone();
         let output_cons = receiver.audio_buffer_cons.clone();
-
+        
+        let (udp1_tx, rx1) = channel::<bool>();
+        let (udp2_tx, rx2) = channel::<bool>();
         {
             let cons = receiver.audio_buffer_cons.clone();
             let prod = receiver.audio_buffer_prod.clone();
+
 
             // Receiver
             thread::spawn(move || {
@@ -319,6 +347,7 @@ mod tests {
                     prod,
                     receiver.udp_stats_sender,
                     false,
+                    rx1
                 )
                 .unwrap();
                 loop {}
@@ -326,6 +355,8 @@ mod tests {
 
             let cons = sender.audio_buffer_cons.clone();
             let prod = sender.audio_buffer_prod.clone();
+
+
             thread::spawn(move || {
                 UdpTransportDebugAdapter::construct_udp_stream(
                     crate::Direction::Sender,
@@ -334,22 +365,27 @@ mod tests {
                     prod,
                     sender.udp_stats_sender,
                     false,
+                    rx2
                 )
                 .unwrap();
                 loop {}
             });
         }
-        
+
         let mut input_prod = input_prod.lock().unwrap();
         for d in TEST_DATA.iter() {
             input_prod.try_push(*d).unwrap();
         }
-        
+
         std::thread::sleep(Duration::from_secs(1));
 
         let output_cons = output_cons.lock().unwrap();
         //cons.pop_slice(&mut v);
         assert_eq!(input_prod.occupied_len(), TEST_DATA.len());
         assert_eq!(output_cons.occupied_len(), 0);
+
+        udp1_tx.send(true).unwrap();
+        udp2_tx.send(true).unwrap();
+    
     }
 }

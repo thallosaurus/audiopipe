@@ -5,7 +5,7 @@ use uastreamer::{
 fn main() {
     //let app = App
     let config = StreamerConfig::from_cli_args(Direction::Sender).unwrap();
-    let (app, _) = App::<f32>::new(config.clone());
+    let (mut app, _) = App::<f32>::new(config.clone());
 
     app.serve(config).unwrap();
 

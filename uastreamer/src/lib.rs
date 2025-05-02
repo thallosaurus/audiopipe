@@ -1,5 +1,5 @@
 use std::{
-    fmt::Debug, fs::{create_dir_all, File}, io::BufWriter, net::{IpAddr, SocketAddr}, str::FromStr, sync::{mpsc::{self, Receiver, Sender}, Arc, Mutex}, time::SystemTime
+    fmt::Debug, fs::{create_dir_all, File}, io::BufWriter, net::{IpAddr, SocketAddr}, str::FromStr, sync::{mpsc::{self, channel, Receiver, Sender}, Arc, Mutex}, time::SystemTime
 };
 
 use bytemuck::Pod;
@@ -188,7 +188,8 @@ pub struct App<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     cpal_stats_sender: Sender<CpalStats>,
     udp_stats_sender: Sender<UdpStats>,
     _config: Arc<Mutex<StreamerConfig>>,
-    pub pool: ThreadPool
+    pub pool: ThreadPool,
+    thread_channels: Option<(Sender<bool>, Sender<bool>)>
 }
 
 impl<T> App<T> where T: cpal::SizedSample + Send + Pod + Default + Debug + 'static {
@@ -209,6 +210,7 @@ impl<T> App<T> where T: cpal::SizedSample + Send + Pod + Default + Debug + 'stat
             udp_stats_sender,
             _config: Arc::new(Mutex::new(config)),
             pool: ThreadPool::new(5),
+            thread_channels: None
         },
         AppDebug {
             cpal_stats_receiver,
@@ -257,7 +259,9 @@ impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> UdpStreamFlo
 impl<T> TcpControlFlow for App<T> where 
     T: cpal::SizedSample + Send + Pod + Default + Debug + 'static
 {
-    fn start_stream(&self, config: StreamerConfig, target: SocketAddr) -> anyhow::Result<()> {
+    fn start_stream(&mut self, config: StreamerConfig, target: SocketAddr) -> anyhow::Result<()> {
+        let (udp_channel_tx, udp_channel_rx) = channel::<bool>();
+        let (cpal_channel_tx, cpal_channel_rx) = channel::<bool>();
         //start video capture and udp sender here
         let dir = config.direction;
         {
@@ -265,7 +269,6 @@ impl<T> TcpControlFlow for App<T> where
             let stats = self.get_cpal_stats_sender();
             let prod = self.get_producer();
             let cons = self.get_consumer();
-            
             let streamer_config = config.clone();
 
             self.pool.execute(move || {
@@ -276,6 +279,12 @@ impl<T> TcpControlFlow for App<T> where
                 let _stream = Self::construct_stream(dir, &d, stream_config, streamer_config, stats, prod, cons).unwrap();
                 loop {
                     //block
+                    if let Ok(msg) = cpal_channel_rx.try_recv() {
+                        if msg {
+                            break;
+                        }
+                    }
+
                 }
             });
         }
@@ -292,9 +301,22 @@ impl<T> TcpControlFlow for App<T> where
             t.set_port(42069);
 
             self.pool.execute(move || {
-                Self::construct_udp_stream(dir, t, cons, prod, stats, config.send_stats).unwrap();
+                Self::construct_udp_stream(dir, t, cons, prod, stats, config.send_stats, udp_channel_rx).unwrap();
             });
         }
+
+        self.thread_channels = Some((cpal_channel_tx, udp_channel_tx));
+        Ok(())
+    }
+    
+    fn stop_stream(
+        &self,
+    ) -> anyhow::Result<()> {
+        if let Some((ch1, ch2)) = &self.thread_channels {
+            ch1.send(true)?;
+            ch2.send(true)?;
+        }
+
         Ok(())
     }
 }

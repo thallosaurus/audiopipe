@@ -2,9 +2,11 @@ use std::{
     io::{BufRead, BufReader, BufWriter, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     str::FromStr,
+    sync::mpsc::Sender,
     time::Duration,
 };
 
+use rand::{Rng, random};
 use serde::{Deserialize, Serialize};
 
 use crate::{Direction, config::StreamerConfig};
@@ -30,11 +32,15 @@ pub trait TcpControlFlow {
 
     /// Serves the TCP Communication Stack
     fn serve(
-        &self,
+        &mut self,
         //tcp_addr: &str,
         streamer_config: StreamerConfig,
     ) -> std::io::Result<()> {
-        let addr = streamer_config.clone().program_args.network_host.unwrap();
+        let addr = streamer_config
+            .clone()
+            .program_args
+            .network_host
+            .unwrap_or(String::from("0.0.0.0:42069"));
 
         let target = SocketAddr::from_str(&addr).unwrap();
         match streamer_config.direction {
@@ -46,18 +52,17 @@ pub trait TcpControlFlow {
             Direction::Receiver => {
                 let listener = Self::create_new_tcp_listener(target)?;
                 println!("listening to {}", target);
-                self.receiver_loop(target, listener, streamer_config)?;
+                self.receiver_loop(listener, streamer_config)?;
             }
         }
         Ok(())
     }
 
     /// This method gets called to start the udp stream
-    fn start_stream(
-        &self,
-        config: StreamerConfig,
-        target: SocketAddr,
-    ) -> anyhow::Result<()>;
+    fn start_stream(&mut self, config: StreamerConfig, target: SocketAddr) -> anyhow::Result<()>;
+
+    /// This method gets called to stop running udp stream
+    fn stop_stream(&self) -> anyhow::Result<()>;
 
     /// Read from a given TcpStream with a BufReader
     fn read_buffer(stream: &mut TcpStream) -> std::io::Result<TcpControlPacket> {
@@ -87,7 +92,7 @@ pub trait TcpControlFlow {
 
     /// This is the loop that gets called when the mode is set to [Direction::Sender]
     fn sender_loop(
-        &self,
+        &mut self,
         target_addr: SocketAddr,
         stream: &mut TcpStream,
         streamer_config: StreamerConfig,
@@ -108,14 +113,13 @@ pub trait TcpControlFlow {
         //debug_assert_eq!(json.state, TcpControlState::Endpoint(12345));
 
         match json.state {
-            TcpControlState::Endpoint(e) => {
-                dbg!("Connecting to port {}", e);
+            TcpControlState::Endpoint(e, payload) => {
+                println!("Connecting to port {}", &e);
 
                 // TODO implement packet validation
 
                 //#[cfg(not(debug_assertions))]
-                let mut target = target_addr.clone();
-                target.set_port(e);
+                let target = SocketAddr::from_str(e.as_str()).unwrap();
 
                 dbg!("Creating streamer for address: {}", target);
                 let _streamer = self.start_stream(streamer_config, target);
@@ -162,8 +166,8 @@ pub trait TcpControlFlow {
 
     /// This is the loop that gets called when the mode is set to [Direction::Receiver]
     fn receiver_loop(
-        &self,
-        target_addr: SocketAddr,
+        &mut self,
+        //target_addr: SocketAddr,
         listener: TcpListener,
         streamer_config: StreamerConfig,
         //device: Arc<Mutex<Device>>,
@@ -173,6 +177,11 @@ pub trait TcpControlFlow {
             println!("Connected");
 
             let mut stream = stream?;
+            let mut own_ip = stream.local_addr()?;
+            let mut rng = rand::rng();
+
+            let port = rng.random_range(30000..40000);
+            own_ip.set_port(port);
 
             let connection_packet = Self::read_buffer(&mut stream)?;
 
@@ -185,16 +194,21 @@ pub trait TcpControlFlow {
 
                 //open device
 
-                let _streamer = self.start_stream(streamer_config.clone(), target_addr);
+                let _streamer = self.start_stream(streamer_config.clone(), own_ip).unwrap();
 
                 let packet = TcpControlPacket {
                     #[cfg(debug_assertions)]
-                    state: TcpControlState::Endpoint(42069),
+                    state: TcpControlState::Endpoint(
+                        own_ip.to_string(),
+                        EndpointPayload {
+                            channels: streamer_config.selected_channels.len() as u16,
+                            buffer_size: streamer_config.buffer_size,
+                        },
+                    ),
 
                     #[cfg(not(debug_assertions))]
                     state: TcpControlState::Endpoint(42069),
                 };
-                dbg!(&packet);
 
                 // send back endpoint
                 Self::write_buffer(&stream, packet)?;
@@ -214,6 +228,7 @@ pub trait TcpControlFlow {
                         }
                         TcpControlState::Disconnect => {
                             println!("Disconnected");
+                            self.stop_stream().unwrap();
                             break;
                         }
                         _ => todo!(),
@@ -235,10 +250,16 @@ pub trait TcpControlFlow {
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum TcpControlState {
     Connect,
-    Endpoint(u16),
+    Endpoint(String, EndpointPayload),
     Ping,
     Disconnect,
     Error,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+struct EndpointPayload {
+    channels: u16,
+    buffer_size: usize,
 }
 
 /// This is the data that gets sent between two instances
@@ -249,26 +270,26 @@ pub struct TcpControlPacket {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        net::SocketAddr,
-        time::Duration,
-    };
+    use std::{net::SocketAddr, sync::mpsc::Sender, time::Duration};
 
     use threadpool::ThreadPool;
 
-    use crate::{args::NewCliArgs, config::StreamerConfig, Direction};
+    use crate::{Direction, args::NewCliArgs, config::StreamerConfig};
 
     use super::TcpControlFlow;
 
-    struct TcpCommunication {
-
-    }
+    struct TcpCommunication {}
     impl TcpControlFlow for TcpCommunication {
         fn start_stream(
-            &self,
+            &mut self,
             _config: StreamerConfig,
             _target: SocketAddr,
         ) -> anyhow::Result<()> {
+            assert!(true);
+            Ok(())
+        }
+
+        fn stop_stream(&self) -> anyhow::Result<()> {
             assert!(true);
             Ok(())
         }
@@ -279,7 +300,6 @@ mod tests {
         let pool = ThreadPool::new(2);
 
         pool.execute(|| {
-
             let args = NewCliArgs::default();
 
             let sconfig = StreamerConfig {
@@ -291,12 +311,9 @@ mod tests {
                 program_args: args,
             };
 
-            let server = TcpCommunication {
-            };
+            let mut server = TcpCommunication {};
 
-            server
-                .serve(sconfig)
-                .unwrap();
+            server.serve(sconfig).unwrap();
         });
 
         // Wait a second for server to be started
@@ -314,12 +331,9 @@ mod tests {
                 program_args: args,
             };
 
-            let server = TcpCommunication {
-            };
+            let mut server = TcpCommunication {};
 
-            server
-                .serve(sconfig)
-                .unwrap();
+            server.serve(sconfig).unwrap();
         });
 
         pool.join();
