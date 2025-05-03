@@ -114,17 +114,19 @@ pub trait TcpControlFlow {
 
         match json.state {
             TcpControlState::Endpoint(e, payload) => {
-                println!("Connecting to port {}", &e);
+                println!("Connecting to port {}, Payload: {:?}", &e, payload);
 
                 // TODO implement packet validation
 
                 //#[cfg(not(debug_assertions))]
                 let target = SocketAddr::from_str(e.as_str()).unwrap();
 
-                dbg!("Creating streamer for address: {}", target);
+                println!("Creating streamer for address: {}", target);
                 let _streamer = self.start_stream(streamer_config, target);
 
                 //wait until the connection is disconnected or dropped
+
+                #[cfg(not(test))]
                 loop {
                     let packet = Self::read_buffer(stream)?;
                     dbg!(&packet);
@@ -205,13 +207,13 @@ pub trait TcpControlFlow {
                             buffer_size: streamer_config.buffer_size,
                         },
                     ),
-
-                    #[cfg(not(debug_assertions))]
-                    state: TcpControlState::Endpoint(42069),
                 };
 
                 // send back endpoint
                 Self::write_buffer(&stream, packet)?;
+
+                #[cfg(not(test))]
+                println!("receiver Runing as test");
 
                 // then we have to wait until the connection is closed or dropped
                 loop {
@@ -235,10 +237,11 @@ pub trait TcpControlFlow {
                     }
                 }
 
-                #[cfg(debug_assertions)]
+                #[cfg(test)]
                 break;
             } else {
                 // refuse
+                break;
             }
         }
         Ok(())
@@ -285,7 +288,7 @@ mod tests {
             _config: StreamerConfig,
             _target: SocketAddr,
         ) -> anyhow::Result<()> {
-            assert!(true);
+            println!("Creating Debug Stream");
             Ok(())
         }
 
