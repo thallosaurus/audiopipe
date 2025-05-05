@@ -1,5 +1,14 @@
 use std::{
-    fmt::Debug, fs::{create_dir_all, File}, io::BufWriter, net::{IpAddr, SocketAddr}, str::FromStr, sync::{mpsc::{self, Receiver, Sender}, Arc, Mutex}, thread::JoinHandle, time::SystemTime
+    fmt::Debug,
+    fs::{File, create_dir_all},
+    io::BufWriter,
+    net::{IpAddr, SocketAddr},
+    str::FromStr,
+    sync::{
+        Arc, Mutex,
+        mpsc::{self, Receiver, Sender, channel},
+    },
+    time::SystemTime,
 };
 
 use bytemuck::Pod;
@@ -7,13 +16,16 @@ use bytemuck::Pod;
 use components::{
     control::TcpControlFlow,
     cpal::{CpalAudioFlow, CpalStats},
-    udp::{UdpStats, UdpStreamFlow},
+    udp::{UdpStats, UdpStatus, UdpStreamFlow},
 };
 use cpal::{traits::*, *};
 use hound::WavWriter;
 
-use ringbuf::{traits::{Observer, Split}, HeapCons, HeapProd};
-use streamer_config::StreamerConfig;
+use config::{StreamerConfig, get_cpal_config};
+use ringbuf::{
+    HeapCons, HeapProd,
+    traits::{Observer, Split},
+};
 use threadpool::ThreadPool;
 
 /// Default Port if none is specified
@@ -41,12 +53,12 @@ pub mod args;
 pub mod splitter;
 
 /// Holds the config struct which gets passed around
-pub mod streamer_config;
+pub mod config;
 
 /// Holds all flows this app offers
 pub mod components;
 
-/// Defines the behaivior of the stream
+/// Defines the behavior of the stream
 ///
 /// Sender: Captures from an audio input stream and sends it over the network
 /// Receiver: Receives from the network and outputs it to a audio output stream
@@ -181,100 +193,56 @@ pub fn write_debug<T: cpal::SizedSample + Send + Pod + Default + 'static>(
     }
 }
 
-/*#[deprecated]
-struct App {
-    config: StreamerConfig,
-    _stream: Stream,
-    _udp_loop: JoinHandle<()>,
-    //direction: Direction,
-    pub net_stats: Receiver<UdpStats>,
-    pub cpal_stats: Receiver<CpalStats>,
-}
-
-impl TcpControlFlow for App {
-    fn start_stream(
-        &self,
-        config: StreamerConfig,
-        device: Arc<Mutex<Device>>,
-        target: SocketAddr,
-    ) -> Result<(), anyhow::Error> {
-        Streamer::construct::<f32>(
-            target,
-            device,
-            config,
-        )
-        .unwrap();
-        Ok(())
-    }
-    
-    fn get_tcp_direction(&self) -> Direction {
-        self.config.direction
-    }
-}
-
-impl StreamComponent for App {
-    fn construct<T: cpal::SizedSample + Send + Pod + Default + std::fmt::Debug + 'static>(
-        target: std::net::SocketAddr,
-        device: Arc<Mutex<cpal::Device>>,
-        streamer_config: StreamerConfig,
-    ) -> anyhow::Result<Box<Self>> {
-        todo!()
-    }
-
-    fn get_bufer_size(&self) -> usize {
-        todo!()
-    }
-
-    fn set_bufer_size(&self, size: usize) {
-        todo!()
-    }
-}*/
-
-
-pub struct AppTest<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
+/// Struct that holds everything the library needs
+pub struct App<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     audio_buffer_prod: Arc<Mutex<HeapProd<T>>>,
     audio_buffer_cons: Arc<Mutex<HeapCons<T>>>,
     cpal_stats_sender: Sender<CpalStats>,
     udp_stats_sender: Sender<UdpStats>,
-    config: StreamerConfig,
-    pub pool: ThreadPool
+    _config: Arc<Mutex<StreamerConfig>>,
+    pub pool: ThreadPool,
+    thread_channels: Option<(Sender<bool>, Sender<bool>)>,
 }
 
-impl<T> AppTest<T> where T: cpal::SizedSample + Send + Pod + Default + Debug + 'static {
-    pub fn new(config: StreamerConfig) -> (Self, AppTestDebug) {
+impl<T> App<T>
+where
+    T: cpal::SizedSample + Send + Pod + Default + Debug + 'static,
+{
+    pub fn new(config: StreamerConfig) -> (Self, AppDebug) {
         dbg!(&config);
-        let audio_buffer = ringbuf::HeapRb::<T>::new(config.buffer_size * config.selected_channels.len());
-
+        let audio_buffer =
+            ringbuf::HeapRb::<T>::new(config.buffer_size * config.selected_channels.len());
         println!("{}", audio_buffer.capacity());
 
         let (audio_buffer_prod, audio_buffer_cons) = audio_buffer.split();
 
         let (cpal_stats_sender, cpal_stats_receiver) = mpsc::channel::<CpalStats>();
         let (udp_stats_sender, udp_stats_receiver) = mpsc::channel::<UdpStats>();
-        
-        (Self {
-            audio_buffer_prod: Arc::new(Mutex::new(audio_buffer_prod)),
-            audio_buffer_cons: Arc::new(Mutex::new(audio_buffer_cons)),
-            cpal_stats_sender,
-            udp_stats_sender,
-            config,
-            pool: ThreadPool::new(5),
-        },
-        AppTestDebug {
-            cpal_stats_receiver,
-            udp_stats_receiver,
-        })
+
+        (
+            Self {
+                audio_buffer_prod: Arc::new(Mutex::new(audio_buffer_prod)),
+                audio_buffer_cons: Arc::new(Mutex::new(audio_buffer_cons)),
+                cpal_stats_sender,
+                udp_stats_sender,
+                _config: Arc::new(Mutex::new(config)),
+                pool: ThreadPool::new(5),
+                thread_channels: None,
+            },
+            AppDebug {
+                cpal_stats_receiver,
+                udp_stats_receiver,
+            },
+        )
     }
 }
 
-pub struct AppTestDebug {
+pub struct AppDebug {
     cpal_stats_receiver: Receiver<CpalStats>,
     udp_stats_receiver: Receiver<UdpStats>,
 }
 
-impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> CpalAudioFlow<T>
-    for AppTest<T>
-{
+impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> CpalAudioFlow<T> for App<T> {
     fn get_producer(&self) -> Arc<Mutex<HeapProd<T>>> {
         self.audio_buffer_prod.clone()
     }
@@ -288,9 +256,7 @@ impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> CpalAudioFlo
     }
 }
 
-impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> UdpStreamFlow<T>
-    for AppTest<T>
-{
+impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> UdpStreamFlow<T> for App<T> {
     fn udp_get_producer(&self) -> Arc<Mutex<HeapProd<T>>> {
         self.audio_buffer_prod.clone()
     }
@@ -298,16 +264,19 @@ impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> UdpStreamFlo
     fn udp_get_consumer(&self) -> Arc<Mutex<HeapCons<T>>> {
         self.audio_buffer_cons.clone()
     }
-    
+
     fn get_udp_stats_sender(&self) -> Sender<UdpStats> {
         self.udp_stats_sender.clone()
     }
 }
 
-impl<T> TcpControlFlow for AppTest<T> where 
-    T: cpal::SizedSample + Send + Pod + Default + Debug + 'static
+impl<T> TcpControlFlow for App<T>
+where
+    T: cpal::SizedSample + Send + Pod + Default + Debug + 'static,
 {
-    fn start_stream(&self, config: StreamerConfig, device: Arc<Mutex<cpal::Device>>, target: SocketAddr) -> anyhow::Result<()> {
+    fn start_stream(&mut self, config: StreamerConfig, target: SocketAddr) -> anyhow::Result<()> {
+        let (udp_channel_tx, udp_channel_rx) = channel::<bool>();
+        let (cpal_channel_tx, cpal_channel_rx) = channel::<bool>();
         //start video capture and udp sender here
         let dir = config.direction;
         {
@@ -315,44 +284,83 @@ impl<T> TcpControlFlow for AppTest<T> where
             let stats = self.get_cpal_stats_sender();
             let prod = self.get_producer();
             let cons = self.get_consumer();
-            
-            let sconfig = config.clone();
+            let streamer_config = config.clone();
+
             self.pool.execute(move || {
-                let device = device.lock().unwrap();
-                let stream = Self::construct_stream(dir, &device, sconfig, stats, prod, cons).unwrap();
+                // TODO maybe i should initialize the device here and don't store it on the streamer config
+                let (d, stream_config) = get_cpal_config(
+                    config.direction,
+                    config.program_args.audio_host,
+                    config.program_args.device,
+                )
+                .unwrap();
+
+                //let device = device.lock().unwrap();
+                let _stream = Self::construct_stream(
+                    dir,
+                    &d,
+                    stream_config,
+                    streamer_config,
+                    stats,
+                    prod,
+                    cons,
+                )
+                .unwrap();
                 loop {
                     //block
+                    if let Ok(msg) = cpal_channel_rx.try_recv() {
+                        if msg {
+                            break;
+                        }
+                    }
                 }
             });
         }
-        
+
         {
             dbg!("Constructing UDP Stream");
             let prod = self.udp_get_producer();
             let cons = self.udp_get_consumer();
             let stats = self.get_udp_stats_sender();
-            let uconfig = config.clone();
             dbg!(&target);
 
             let mut t = target.clone();
             t.set_ip(IpAddr::from_str("0.0.0.0").unwrap());
             t.set_port(42069);
 
+            let (udp_msg_tx, udp_msg_rx) = channel::<UdpStatus>();
+
             self.pool.execute(move || {
-                Self::construct_udp_stream(dir, uconfig, t, cons, prod, stats).unwrap();
+                Self::construct_udp_stream(
+                    dir,
+                    t,
+                    cons,
+                    prod,
+                    stats,
+                    config.send_stats,
+                    udp_channel_rx,
+                    udp_msg_rx
+                )
+                .unwrap();
             });
         }
+
+        self.thread_channels = Some((cpal_channel_tx, udp_channel_tx));
         Ok(())
     }
-    
-    fn get_tcp_direction(&self) -> Direction {
-        self.config.direction
+
+    fn stop_stream(&self) -> anyhow::Result<()> {
+        if let Some((ch1, ch2)) = &self.thread_channels {
+            ch1.send(true)?;
+            ch2.send(true)?;
+        }
+
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn x_test_transfer() {}

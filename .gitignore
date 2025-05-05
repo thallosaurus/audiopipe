@@ -1,3 +1,4 @@
 /target
-*.wav
+*_dump.wav
 .DS_Store
+test-gui/

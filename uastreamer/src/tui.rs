@@ -4,7 +4,6 @@ use std::{
     time::Duration,
 };
 
-use cpal::{Device, traits::DeviceTrait};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     DefaultTerminal, Frame,
@@ -16,20 +15,19 @@ use ratatui::{
     widgets::{Block, Paragraph, Widget},
 };
 
-use crate::{components::{cpal::CpalStats, udp::UdpStats}, Direction};
+use crate::{components::{cpal::CpalStats, udp::UdpStats}, AppDebug, Direction};
 
 pub fn tui(
     direction: Direction,
     device_name: String,
-    net_stats: Receiver<UdpStats>,
-    cpal_stats: Receiver<CpalStats>,
+    app_debug: AppDebug,
 ) -> io::Result<()> {
     let mut terminal = ratatui::init();
 
-    let mut app = App {
+    let mut app = TuiApp {
         exit: false,
-        net_stats: Arc::new(Mutex::new(net_stats)),
-        cpal_stats: Arc::new(Mutex::new(cpal_stats)),
+        net_stats: Arc::new(Mutex::new(app_debug.udp_stats_receiver)),
+        cpal_stats: Arc::new(Mutex::new(app_debug.cpal_stats_receiver)),
         direction,
         device_name,
     };
@@ -43,7 +41,7 @@ pub fn tui(
 }
 
 #[derive(Debug)]
-pub struct App {
+pub struct TuiApp {
     exit: bool,
     net_stats: Arc<Mutex<Receiver<UdpStats>>>,
     cpal_stats: Arc<Mutex<Receiver<CpalStats>>>,
@@ -51,7 +49,7 @@ pub struct App {
     direction: Direction,
 }
 
-impl App {
+impl TuiApp {
     /// runs the application's main loop until the user quits
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
         while !self.exit {
@@ -93,7 +91,7 @@ impl App {
     }
 }
 
-impl Widget for &App {
+impl Widget for &TuiApp {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let title_text = match self.direction {
             Direction::Sender => " Audio Sender ",

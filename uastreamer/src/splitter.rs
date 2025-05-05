@@ -4,7 +4,7 @@ use bytemuck::Pod;
 use cpal::ChannelCount;
 use ringbuf::{
     HeapCons,
-    traits::{Consumer, Observer},
+    traits::Consumer,
 };
 
 #[derive(Debug)]
