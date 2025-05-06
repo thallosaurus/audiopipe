@@ -39,6 +39,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         stats: Sender<CpalStats>,
         prod: Arc<Mutex<HeapProd<T>>>,
         cons: Arc<Mutex<HeapCons<T>>>,
+        cpal_channel_tx: Sender<bool>,
     ) -> anyhow::Result<Stream> {
         //let stats = self.get_cpal_stats_sender();
 
@@ -63,6 +64,8 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                             config.selected_channels.clone(),
                             channel_count,
                         );
+
+                        cpal_channel_tx.send(true).unwrap();
 
                         if config.send_stats {
                             stats
