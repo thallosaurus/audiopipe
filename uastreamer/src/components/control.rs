@@ -199,7 +199,7 @@ pub trait TcpControlFlow {
                 let _streamer = self.start_stream(streamer_config.clone(), own_ip).unwrap();
 
                 let packet = TcpControlPacket {
-                    #[cfg(debug_assertions)]
+                    //#[cfg(debug_assertions)]
                     state: TcpControlState::Endpoint(
                         own_ip.to_string(),
                         EndpointPayload {
