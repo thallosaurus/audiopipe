@@ -30,7 +30,6 @@ const MAX_UDP_DATA_LENGTH: u16 = MAX_UDP_PACKET_LENGTH - 32;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 struct UdpAudioPacket {
-    data_len: usize,
     data: Vec<u8>,
 }
 
@@ -139,7 +138,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                     let packet = UdpAudioPacket {
                         //sequence: seq,
                         //total_len: consumed * size_of::<u8>(),
-                        data_len: udp_data.len(),
+                        //data_len: udp_data.len(),
                         data: udp_data.to_vec(),
                     };
                     
@@ -233,15 +232,17 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             }
 
             // create the temporary network buffer needed to capture the network samples
-            let mut temp_network_buffer = vec![0u8; MAX_UDP_DATA_LENGTH.into()];
+            let mut temp_network_buffer = vec![0u8; 8192 * 2].into_boxed_slice();
             
             //let mut temp_network_buffer: Box<[u8]> = vec![].into_boxed_slice();
             
             // Receive from the Network
             match socket.recv(&mut temp_network_buffer) {
                 Ok(received) => {
-                    dbg!(&temp_network_buffer.len());
-                    dbg!(&received);
+                    //dbg!(&received);
+                    //println!("{:?}", temp_network_buffer);
+                    let packet: UdpAudioPacket = bincode2::deserialize_from(&temp_network_buffer[..received]).unwrap();
+                    //println!("{:?}", packet);
                     /*let (packet, usize) =
                         bincode2::deserialize::<UdpAudioPacket, Configuration>(
                             temp_network_buffer.as_slice(),
@@ -249,11 +250,10 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                         )
                         .unwrap();*/
 
-                    let packet: UdpAudioPacket = bincode2::deserialize(&temp_network_buffer[..received]).unwrap();
                     // Convert the buffered network samples to the specified sample format
                     //println!("UDP Received a packet... {}", received);
                     let converted_samples: &[T] = bytemuck::cast_slice(&packet.data);
-                    println!("Received: {:?}", converted_samples);
+                    //println!("Received: {:?}", converted_samples);
 
                     let pre_occupied_buffer = prod.occupied_len();
 
