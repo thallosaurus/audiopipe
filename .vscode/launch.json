@@ -4,7 +4,6 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-        
         {
             "type": "lldb",
             "request": "launch",
@@ -39,7 +38,12 @@
                     "kind": "bin"
                 }
             },
-            "args": [],
+            "args": [
+                "-d=\"UMC1820\"",
+                "-c=0",
+                "-c=1",
+                "-b=1024",
+            ],
             "cwd": "${workspaceFolder}"
         },
         {
@@ -76,7 +80,13 @@
                     "kind": "bin"
                 }
             },
-            "args": [],
+            "args": [
+                "-n 10.0.0.30:42069",
+                "-d \"CABLE Output (VB-Audio Virtual Cable)\"",
+                "-c 0",
+                "-c 1",
+                "-b 1024"
+            ],
             "cwd": "${workspaceFolder}"
         },
         {

@@ -16,7 +16,7 @@ use bytemuck::Pod;
 use components::{
     control::TcpControlFlow,
     cpal::{CpalAudioFlow, CpalStats},
-    udp::{UdpStats, UdpStatus, UdpStreamFlow},
+    udp::{NetworkUDPStats, UdpStatus, UdpStreamFlow},
 };
 use cpal::{traits::*, *};
 use hound::WavWriter;
@@ -198,10 +198,10 @@ pub struct App<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     audio_buffer_prod: Arc<Mutex<HeapProd<T>>>,
     audio_buffer_cons: Arc<Mutex<HeapCons<T>>>,
     cpal_stats_sender: Sender<CpalStats>,
-    udp_stats_sender: Sender<UdpStats>,
+    udp_stats_sender: Sender<NetworkUDPStats>,
     _config: Arc<Mutex<StreamerConfig>>,
     pub pool: ThreadPool,
-    thread_channels: Option<(Sender<bool>, Sender<bool>)>,
+    //thread_channels: Option<(Sender<bool>, Sender<bool>)>,
 }
 
 impl<T> App<T>
@@ -217,7 +217,7 @@ where
         let (audio_buffer_prod, audio_buffer_cons) = audio_buffer.split();
 
         let (cpal_stats_sender, cpal_stats_receiver) = mpsc::channel::<CpalStats>();
-        let (udp_stats_sender, udp_stats_receiver) = mpsc::channel::<UdpStats>();
+        let (udp_stats_sender, udp_stats_receiver) = mpsc::channel::<NetworkUDPStats>();
 
         (
             Self {
@@ -227,7 +227,7 @@ where
                 udp_stats_sender,
                 _config: Arc::new(Mutex::new(config)),
                 pool: ThreadPool::new(5),
-                thread_channels: None,
+                //thread_channels: None,
             },
             AppDebug {
                 cpal_stats_receiver,
@@ -239,7 +239,7 @@ where
 
 pub struct AppDebug {
     cpal_stats_receiver: Receiver<CpalStats>,
-    udp_stats_receiver: Receiver<UdpStats>,
+    udp_stats_receiver: Receiver<NetworkUDPStats>,
 }
 
 impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> CpalAudioFlow<T> for App<T> {
@@ -265,7 +265,7 @@ impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> UdpStreamFlo
         self.audio_buffer_cons.clone()
     }
 
-    fn get_udp_stats_sender(&self) -> Sender<UdpStats> {
+    fn get_udp_stats_sender(&self) -> Sender<NetworkUDPStats> {
         self.udp_stats_sender.clone()
     }
 }
@@ -275,7 +275,7 @@ where
     T: cpal::SizedSample + Send + Pod + Default + Debug + 'static,
 {
     fn start_stream(&mut self, config: StreamerConfig, target: SocketAddr) -> anyhow::Result<()> {
-        let (udp_channel_tx, udp_channel_rx) = channel::<bool>();
+        let (chan_sync_tx, chan_sync_rx) = channel::<bool>();
         let (cpal_channel_tx, cpal_channel_rx) = channel::<bool>();
         //start video capture and udp sender here
         let dir = config.direction;
@@ -304,8 +304,12 @@ where
                     stats,
                     prod,
                     cons,
+                    chan_sync_tx
                 )
                 .unwrap();
+
+            _stream.play().unwrap();
+
                 loop {
                     //block
                     if let Ok(msg) = cpal_channel_rx.try_recv() {
@@ -324,9 +328,9 @@ where
             let stats = self.get_udp_stats_sender();
             dbg!(&target);
 
-            let mut t = target.clone();
-            t.set_ip(IpAddr::from_str("0.0.0.0").unwrap());
-            t.set_port(42069);
+            let t = target.clone();
+            //t.set_ip(IpAddr::from_str("0.0.0.0").unwrap());
+            //t.set_port(42069);
 
             let (udp_msg_tx, udp_msg_rx) = channel::<UdpStatus>();
 
@@ -336,24 +340,24 @@ where
                     t,
                     cons,
                     prod,
-                    stats,
-                    config.send_stats,
-                    udp_channel_rx,
-                    udp_msg_rx
+                    Some(stats),
+                    udp_msg_rx,
+                    chan_sync_rx
+
                 )
                 .unwrap();
             });
         }
 
-        self.thread_channels = Some((cpal_channel_tx, udp_channel_tx));
+        //self.thread_channels = Some((cpal_channel_tx, chan_sync_tx));
         Ok(())
     }
 
     fn stop_stream(&self) -> anyhow::Result<()> {
-        if let Some((ch1, ch2)) = &self.thread_channels {
+        /*if let Some((ch1, ch2)) = &self.thread_channels {
             ch1.send(true)?;
             ch2.send(true)?;
-        }
+        }*/
 
         Ok(())
     }

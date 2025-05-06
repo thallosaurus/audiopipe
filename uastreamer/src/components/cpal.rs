@@ -3,7 +3,7 @@ use cpal::{
     ChannelCount, InputCallbackInfo, OutputCallbackInfo, Sample, Stream, StreamConfig,
     traits::DeviceTrait,
 };
-use ringbuf::{HeapCons, HeapProd, traits::Producer};
+use ringbuf::{traits::{Observer, Producer}, HeapCons, HeapProd};
 use std::{
     fmt::Debug,
     sync::{Arc, Mutex, mpsc::Sender},
@@ -39,13 +39,13 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         stats: Sender<CpalStats>,
         prod: Arc<Mutex<HeapProd<T>>>,
         cons: Arc<Mutex<HeapCons<T>>>,
+        cpal_channel_tx: Sender<bool>,
     ) -> anyhow::Result<Stream> {
         //let stats = self.get_cpal_stats_sender();
 
         Ok(match direction {
             Direction::Sender => {
-                //                let output = self.get_producer();
-                let mut writer = create_wav_writer("sender_dump".to_owned(), 1, 44100)?;
+                let mut writer = create_wav_writer("sender_dump".to_owned(), config.selected_channels.len() as u16, 48000)?;
 
                 device.build_input_stream(
                     &cpal_config,
@@ -62,6 +62,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                             &mut writer,
                             config.selected_channels.clone(),
                             channel_count,
+                            cpal_channel_tx.clone()
                         );
 
                         if config.send_stats {
@@ -81,7 +82,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             }
             Direction::Receiver => {
                 //let cons = self.get_consumer();
-                let mut writer = create_wav_writer("receiver_dump".to_owned(), 1, 44100)?;
+                let mut writer = create_wav_writer("receiver_dump".to_owned(), config.selected_channels.len() as u16, 48000)?;
 
                 device.build_output_stream(
                     &cpal_config,
@@ -92,7 +93,6 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                         let selected_channels = config.selected_channels.clone();
 
                         let consumed = Self::process_output(
-                            //&config,
                             output,
                             Some(info),
                             cons.as_mut(),
@@ -129,6 +129,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         writer: &mut Option<DebugWavWriter>,
         selected_channels: Vec<usize>,
         channel_count: u16, //stats: Arc<Sender<CpalStats>>,
+        cpal_channel_tx: Sender<bool>
     ) -> usize {
         let mut consumed = 0;
 
@@ -141,13 +142,24 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         .unwrap();
 
         //println!("Buffer Size inside cpal: {}, CPAL Len: {}", output.capacity(), data.len());
+       
 
         // Iterate through the input buffer and save data
         for s in splitter {
             if s.on_selected_channel {
                 if !cfg!(test) {
-                    output.try_push(*s.sample).unwrap();
-                    write_debug(writer, *s.sample);
+
+                    if let Ok(()) = output.try_push(*s.sample) {
+                        write_debug(writer, *s.sample);
+                    } else {
+                        println!("OVERFLOW - Data Length: {}, Occ: {}", data.len(), output.occupied_len());
+
+                        // Urge the UDP thread to send the buffer immediately
+                        cpal_channel_tx.send(true).unwrap();
+                        //return consumed
+                    }
+                    //output.try_push(*s.sample).unwrap();
+
                 } else {
                     output.try_push(Sample::EQUILIBRIUM).unwrap();
                 }
@@ -155,6 +167,8 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
             consumed += 1;
         }
+        cpal_channel_tx.send(true).unwrap();
+
         consumed
     }
 
@@ -263,7 +277,7 @@ mod tests {
 
         let mut prod = adapter.prod.lock().unwrap();
         
-        CpalAudioDebugAdapter::process_input(data.as_slice(), None, &mut prod, &mut None, vec![0], 1);
+        //CpalAudioDebugAdapter::process_input(data.as_slice(), None, &mut prod, &mut None, vec![0], 1);
         
         let cons = adapter.cons.lock().unwrap();
 

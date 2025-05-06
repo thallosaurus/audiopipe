@@ -199,7 +199,7 @@ pub trait TcpControlFlow {
                 let _streamer = self.start_stream(streamer_config.clone(), own_ip).unwrap();
 
                 let packet = TcpControlPacket {
-                    #[cfg(debug_assertions)]
+                    //#[cfg(debug_assertions)]
                     state: TcpControlState::Endpoint(
                         own_ip.to_string(),
                         EndpointPayload {
@@ -213,7 +213,7 @@ pub trait TcpControlFlow {
                 Self::write_buffer(&stream, packet)?;
 
                 #[cfg(not(test))]
-                println!("receiver Runing as test");
+                println!("receiver Running as test");
 
                 // then we have to wait until the connection is closed or dropped
                 loop {
