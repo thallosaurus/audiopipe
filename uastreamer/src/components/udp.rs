@@ -9,6 +9,7 @@ use std::{
     time::Duration,
 };
 
+use bincode::{config::{self, Configuration}, Decode, Encode};
 use bytemuck::Pod;
 use ringbuf::{
     HeapCons, HeapProd,
@@ -19,6 +20,18 @@ use crate::Direction;
 
 pub enum UdpStatus {
     DidEnd,
+}
+
+#[derive(Encode, Decode, PartialEq, Debug)]
+struct UdpAudioPacket {
+    sequence: u64,
+    total_len: usize,
+    data_len: usize,
+    data: Vec<u8>
+}
+
+enum ReceivedUdpAudioPacket {
+    Default(UdpAudioPacket, usize)
 }
 
 /// Stats which get sent after each UDP Event
@@ -97,6 +110,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         udp_msg: Receiver<UdpStatus>,
         chan_sync: Receiver<bool>,
     ) {
+        let config = config::standard();
         loop {
             if let Ok(msg) = udp_msg.try_recv() {
                 match msg {
@@ -120,22 +134,34 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                 let pre_occupied_buffer = buffer_consumer.occupied_len();
 
                 // Place the network buffer onto the stack
-                buffer_consumer.pop_slice(&mut network_buffer);
+                let consumed = buffer_consumer.pop_slice(&mut network_buffer);
 
                 // Occupied Size after operation
                 let post_occupied_buffer = buffer_consumer.occupied_len();
 
                 // The Casted UDP Packet
-                let udp_packet: &[u8] = bytemuck::cast_slice(&network_buffer);
+                let udp_data: &[u8] = bytemuck::cast_slice(&network_buffer);
+
+                let packet = UdpAudioPacket {
+                    sequence: 0,
+                    total_len: buffer_consumer.capacity().into(),
+                    data_len: consumed,
+                    data: udp_data.to_vec(),
+                };
+
+                let set= bincode::encode_to_vec(packet, config).unwrap();
+
+                let _sent_s = socket.send(&set).unwrap();
+
 
                 //println!("Sending {:?}", udp_packet);
-                let _sent_s = socket.send(udp_packet).unwrap();
+                //let _sent_s = socket.send(udp_packet).unwrap();
 
                 // Send statistics to the channel
                 if send_network_stats {
                     stats
                         .send(UdpStats {
-                            sent: Some(udp_packet.len()),
+                            sent: Some(udp_data.len()),
                             received: None,
                             pre_occupied_buffer,
                             post_occupied_buffer,
@@ -166,6 +192,8 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
         //let stats = self.get_udp_stats_sender();
 
+        let config = config::standard();
+
         loop {
             //println!("Inside Receiver Loop, {}", socket.local_addr().unwrap());
             let mut prod = buffer_producer.lock().unwrap();
@@ -183,15 +211,16 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             dbg!(cap);
 
             // create the temporary network buffer needed to capture the network samples
-            //let mut temp_network_buffer: Box<[u8]> = vec![0u8; cap * byte_size].into_boxed_slice();
-            let mut temp_network_buffer: Box<[u8]> = vec![].into_boxed_slice();
+            let mut temp_network_buffer: Box<[u8]> = vec![0u8; 4096].into_boxed_slice();
+            //let mut temp_network_buffer: Box<[u8]> = vec![].into_boxed_slice();
 
             // Receive from the Network
             match socket.recv(&mut temp_network_buffer) {
                 Ok(received) => {
+                    let (packet, usize) = bincode::decode_from_slice::<UdpAudioPacket, Configuration>(&temp_network_buffer, config).unwrap();
                     // Convert the buffered network samples to the specified sample format
                     //println!("UDP Received a packet... {}", received);
-                    let converted_samples: &[T] = bytemuck::cast_slice(&temp_network_buffer);
+                    let converted_samples: &[T] = bytemuck::cast_slice(&packet.data);
                     println!("Received: {:?}", converted_samples);
 
                     let pre_occupied_buffer = prod.occupied_len();
