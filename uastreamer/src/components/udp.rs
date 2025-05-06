@@ -9,15 +9,13 @@ use std::{
     time::Duration,
 };
 
-use bincode::{
-    Decode, Encode,
-    config::{self, Configuration},
-};
+
 use bytemuck::Pod;
 use ringbuf::{
     HeapCons, HeapProd,
     traits::{Consumer, Observer, Producer},
 };
+use serde::{Deserialize, Serialize};
 
 use crate::Direction;
 
@@ -30,7 +28,7 @@ const MAX_UDP_PACKET_LENGTH: u16 = 1200;
 /// Max UDP Packet: 1200bytes
 const MAX_UDP_DATA_LENGTH: u16 = MAX_UDP_PACKET_LENGTH - 32;
 
-#[derive(Encode, Decode, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
 struct UdpAudioPacket {
     sequence: u64,
     total_len: usize,
@@ -122,7 +120,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         udp_msg: Receiver<UdpStatus>,
         chan_sync: Receiver<bool>,
     ) {
-        let config = config::standard();
+
         loop {
             if let Ok(msg) = udp_msg.try_recv() {
                 match msg {
@@ -151,7 +149,8 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                         data: udp_data.to_vec(),
                     };
                     
-                    let set = bincode::encode_to_vec(packet, config).unwrap();
+                    //let set = bincode::encode_to_vec(packet, config).unwrap();
+                    let set = bincode2::serialize(&packet).unwrap();
                     
                     let _sent_s = socket.send(&set).unwrap();
                     seq += 1;
@@ -225,12 +224,10 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
         //let stats = self.get_udp_stats_sender();
 
-        let config = config::standard();
-
         loop {
             //println!("Inside Receiver Loop, {}", socket.local_addr().unwrap());
             let mut prod = buffer_producer.lock().unwrap();
-            let cap: usize = prod.capacity().into();
+            //let cap: usize = prod.capacity().into();
 
             if let Ok(msg) = udp_msg.try_recv() {
                 match msg {
@@ -242,19 +239,22 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             }
 
             // create the temporary network buffer needed to capture the network samples
-            let mut temp_network_buffer: Box<[u8]> = vec![0u8; MAX_UDP_DATA_LENGTH.into()].into_boxed_slice();
-            dbg!(&temp_network_buffer);
+            let mut temp_network_buffer = vec![0u8; MAX_UDP_DATA_LENGTH.into()];
+            
             //let mut temp_network_buffer: Box<[u8]> = vec![].into_boxed_slice();
-
+            
             // Receive from the Network
             match socket.recv(&mut temp_network_buffer) {
                 Ok(received) => {
-                    let (packet, usize) =
-                        bincode::decode_from_slice::<UdpAudioPacket, Configuration>(
-                            &temp_network_buffer,
+                    dbg!(&temp_network_buffer.len());
+                    /*let (packet, usize) =
+                        bincode2::deserialize::<UdpAudioPacket, Configuration>(
+                            temp_network_buffer.as_slice(),
                             config,
                         )
-                        .unwrap();
+                        .unwrap();*/
+
+                    let packet: UdpAudioPacket = bincode2::deserialize(&temp_network_buffer).unwrap();
                     // Convert the buffered network samples to the specified sample format
                     //println!("UDP Received a packet... {}", received);
                     let converted_samples: &[T] = bytemuck::cast_slice(&packet.data);
