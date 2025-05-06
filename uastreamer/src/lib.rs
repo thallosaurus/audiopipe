@@ -201,7 +201,7 @@ pub struct App<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     udp_stats_sender: Sender<UdpStats>,
     _config: Arc<Mutex<StreamerConfig>>,
     pub pool: ThreadPool,
-    thread_channels: Option<(Sender<bool>, Sender<bool>)>,
+    //thread_channels: Option<(Sender<bool>, Sender<bool>)>,
 }
 
 impl<T> App<T>
@@ -227,7 +227,7 @@ where
                 udp_stats_sender,
                 _config: Arc::new(Mutex::new(config)),
                 pool: ThreadPool::new(5),
-                thread_channels: None,
+                //thread_channels: None,
             },
             AppDebug {
                 cpal_stats_receiver,
@@ -275,7 +275,7 @@ where
     T: cpal::SizedSample + Send + Pod + Default + Debug + 'static,
 {
     fn start_stream(&mut self, config: StreamerConfig, target: SocketAddr) -> anyhow::Result<()> {
-        let (udp_channel_tx, udp_channel_rx) = channel::<bool>();
+        let (chan_sync_tx, chan_sync_rx) = channel::<bool>();
         let (cpal_channel_tx, cpal_channel_rx) = channel::<bool>();
         //start video capture and udp sender here
         let dir = config.direction;
@@ -304,9 +304,12 @@ where
                     stats,
                     prod,
                     cons,
+                    chan_sync_tx
                 )
                 .unwrap();
-            
+
+            _stream.play().unwrap();
+
                 loop {
                     //block
                     if let Ok(msg) = cpal_channel_rx.try_recv() {
@@ -339,22 +342,23 @@ where
                     prod,
                     stats,
                     config.send_stats,
-                    udp_channel_rx,
-                    udp_msg_rx
+                    udp_msg_rx,
+                    chan_sync_rx
+
                 )
                 .unwrap();
             });
         }
 
-        self.thread_channels = Some((cpal_channel_tx, udp_channel_tx));
+        //self.thread_channels = Some((cpal_channel_tx, chan_sync_tx));
         Ok(())
     }
 
     fn stop_stream(&self) -> anyhow::Result<()> {
-        if let Some((ch1, ch2)) = &self.thread_channels {
+        /*if let Some((ch1, ch2)) = &self.thread_channels {
             ch1.send(true)?;
             ch2.send(true)?;
-        }
+        }*/
 
         Ok(())
     }
