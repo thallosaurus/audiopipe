@@ -93,7 +93,6 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                         let selected_channels = config.selected_channels.clone();
 
                         let consumed = Self::process_output(
-                            //&config,
                             output,
                             Some(info),
                             cons.as_mut(),
