@@ -30,14 +30,8 @@ const MAX_UDP_DATA_LENGTH: u16 = MAX_UDP_PACKET_LENGTH - 32;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 struct UdpAudioPacket {
-    sequence: u64,
-    total_len: usize,
     data_len: usize,
     data: Vec<u8>,
-}
-
-impl UdpAudioPacket {
-    fn from_data(data: Vec<u8>) {}
 }
 
 enum ReceivedUdpAudioPacket {
@@ -143,9 +137,9 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                     let udp_data: &[u8] = bytemuck::cast_slice(&data_buf);
                     
                     let packet = UdpAudioPacket {
-                        sequence: seq,
-                        total_len: consumed * size_of::<u8>(),
-                        data_len: consumed,
+                        //sequence: seq,
+                        //total_len: consumed * size_of::<u8>(),
+                        data_len: udp_data.len(),
                         data: udp_data.to_vec(),
                     };
                     

@@ -21,6 +21,8 @@ fn main() {
 
     let stream = device.build_input_stream(&c, move |data: &[f32], info| {
         println!("Data Length: {}, Channels: {}, Individual Buffer Size: {}", data.len(), c.channels, data.len() / c.channels as usize);
+
+        
     }, move |err| eprintln!("{}", err), None).unwrap();
 
     stream.play();
