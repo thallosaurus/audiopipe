@@ -306,6 +306,7 @@ where
                     cons,
                 )
                 .unwrap();
+            
                 loop {
                     //block
                     if let Ok(msg) = cpal_channel_rx.try_recv() {
@@ -324,9 +325,9 @@ where
             let stats = self.get_udp_stats_sender();
             dbg!(&target);
 
-            let mut t = target.clone();
-            t.set_ip(IpAddr::from_str("0.0.0.0").unwrap());
-            t.set_port(42069);
+            let t = target.clone();
+            //t.set_ip(IpAddr::from_str("0.0.0.0").unwrap());
+            //t.set_port(42069);
 
             let (udp_msg_tx, udp_msg_rx) = channel::<UdpStatus>();
 

@@ -91,15 +91,15 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         udp_msg: Receiver<UdpStatus>
     ) {
         loop {
-            let mut buffer_consumer = buffer_consumer.lock().unwrap();
-
+            
             if let Ok(msg) = udp_channel.try_recv() {
                 if msg {
                     println!("Exiting UDP Sender Loop");
                     break;
                 }
             }
-
+            
+            let mut buffer_consumer = buffer_consumer.lock().unwrap();
             // Only send the network package if the network buffer is full to avoid partial sends
             if buffer_consumer.is_full() {
                 // TODO Check if this might slow down communication
@@ -133,6 +133,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                         .unwrap();
                 }
             }
+            std::thread::sleep(Duration::from_millis(50));
         }
     }
 
@@ -164,8 +165,6 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                     break;
                 }
             }
-
-            dbg!(cap);
 
             // create the temporary network buffer needed to capture the network samples
             let mut temp_network_buffer: Box<[u8]> = vec![0u8; cap * byte_size].into_boxed_slice();
