@@ -9,7 +9,10 @@ use std::{
     time::Duration,
 };
 
-use bincode::{config::{self, Configuration}, Decode, Encode};
+use bincode::{
+    Decode, Encode,
+    config::{self, Configuration},
+};
 use bytemuck::Pod;
 use ringbuf::{
     HeapCons, HeapProd,
@@ -21,17 +24,26 @@ use crate::Direction;
 pub enum UdpStatus {
     DidEnd,
 }
+const MAX_UDP_PACKET_LENGTH: u16 = 1200;
+
+/// Header Size: 32bytes
+/// Max UDP Packet: 1200bytes
+const MAX_UDP_DATA_LENGTH: u16 = MAX_UDP_PACKET_LENGTH - 32;
 
 #[derive(Encode, Decode, PartialEq, Debug)]
 struct UdpAudioPacket {
     sequence: u64,
     total_len: usize,
     data_len: usize,
-    data: Vec<u8>
+    data: Vec<u8>,
+}
+
+impl UdpAudioPacket {
+    fn from_data(data: Vec<u8>) {}
 }
 
 enum ReceivedUdpAudioPacket {
-    Default(UdpAudioPacket, usize)
+    Default(UdpAudioPacket, usize),
 }
 
 /// Stats which get sent after each UDP Event
@@ -122,22 +134,43 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             }
 
             let mut buffer_consumer = buffer_consumer.lock().unwrap();
-            //if let Ok(send) = chan_sync.try_recvu() {
+
+            // Only send the network package if the network buffer is full or we got the signal
             if chan_sync.try_recv().unwrap_or(false) || buffer_consumer.is_full() {
-                // Only send the network package if the network buffer is full to avoid partial sends
+                let mut seq = 0;
+                while !buffer_consumer.is_empty() {
+
+                    let mut data_buf: Box<[T]> = vec![T::default(); MAX_UDP_DATA_LENGTH.into()].into_boxed_slice();
+                    let consumed = buffer_consumer.pop_slice(&mut data_buf);
+                    let udp_data: &[u8] = bytemuck::cast_slice(&data_buf);
+                    
+                    let packet = UdpAudioPacket {
+                        sequence: seq,
+                        total_len: MAX_UDP_DATA_LENGTH.into(),
+                        data_len: consumed,
+                        data: udp_data.to_vec(),
+                    };
+                    
+                    let set = bincode::encode_to_vec(packet, config).unwrap();
+                    
+                    let _sent_s = socket.send(&set).unwrap();
+                    seq += 1;
+                }
+
+
                 //if buffer_consumer.is_full() {
                 // TODO Check if this might slow down communication
-                let mut network_buffer: Box<[T]> =
-                    vec![T::default(); buffer_consumer.occupied_len()].into_boxed_slice();
+                /*let mut network_buffer: Box<[T]> =
+                vec![T::default(); buffer_consumer.occupied_len()].into_boxed_slice();*/
 
                 // get buffer size before changes
-                let pre_occupied_buffer = buffer_consumer.occupied_len();
+                //let pre_occupied_buffer = buffer_consumer.occupied_len();
 
                 // Place the network buffer onto the stack
-                let consumed = buffer_consumer.pop_slice(&mut network_buffer);
+                //let consumed = buffer_consumer.pop_slice(&mut network_buffer);
 
                 // Occupied Size after operation
-                let post_occupied_buffer = buffer_consumer.occupied_len();
+                /*let post_occupied_buffer = buffer_consumer.occupied_len();
 
                 // The Casted UDP Packet
                 let udp_data: &[u8] = bytemuck::cast_slice(&network_buffer);
@@ -149,16 +182,15 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                     data: udp_data.to_vec(),
                 };
 
-                let set= bincode::encode_to_vec(packet, config).unwrap();
+                let set = bincode::encode_to_vec(packet, config).unwrap();
 
-                let _sent_s = socket.send(&set).unwrap();
-
+                let _sent_s = socket.send(&set).unwrap();*/
 
                 //println!("Sending {:?}", udp_packet);
                 //let _sent_s = socket.send(udp_packet).unwrap();
 
                 // Send statistics to the channel
-                if send_network_stats {
+                /*if send_network_stats {
                     stats
                         .send(UdpStats {
                             sent: Some(udp_data.len()),
@@ -168,6 +200,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                         })
                         .unwrap();
                 }
+                */
             } else {
                 //println!("Buffer not full");
             }
@@ -208,16 +241,20 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                 }
             }
 
-            dbg!(cap);
-
             // create the temporary network buffer needed to capture the network samples
-            let mut temp_network_buffer: Box<[u8]> = vec![0u8; 4096].into_boxed_slice();
+            let mut temp_network_buffer: Box<[u8]> = vec![0u8; MAX_UDP_DATA_LENGTH.into()].into_boxed_slice();
+            dbg!(&temp_network_buffer);
             //let mut temp_network_buffer: Box<[u8]> = vec![].into_boxed_slice();
 
             // Receive from the Network
             match socket.recv(&mut temp_network_buffer) {
                 Ok(received) => {
-                    let (packet, usize) = bincode::decode_from_slice::<UdpAudioPacket, Configuration>(&temp_network_buffer, config).unwrap();
+                    let (packet, usize) =
+                        bincode::decode_from_slice::<UdpAudioPacket, Configuration>(
+                            &temp_network_buffer,
+                            config,
+                        )
+                        .unwrap();
                     // Convert the buffered network samples to the specified sample format
                     //println!("UDP Received a packet... {}", received);
                     let converted_samples: &[T] = bytemuck::cast_slice(&packet.data);
@@ -356,7 +393,7 @@ mod tests {
                 sender.udp_stats_sender,
                 false,
                 udp_msg_rx,
-                rx
+                rx,
             )
             .unwrap();
         });
@@ -397,7 +434,7 @@ mod tests {
                 receiver.udp_stats_sender,
                 false,
                 udp_msg_rx,
-                rx
+                rx,
             )
             .unwrap();
         });
@@ -417,7 +454,7 @@ mod tests {
                 sender.udp_stats_sender,
                 false,
                 udp_msg_rx,
-                rx
+                rx,
             )
             .unwrap();
         });
@@ -470,7 +507,7 @@ mod tests {
                     receiver.udp_stats_sender,
                     false,
                     udp_msg_rx,
-                    rx1
+                    rx1,
                 )
                 .unwrap();
             });
@@ -488,7 +525,7 @@ mod tests {
                     sender.udp_stats_sender,
                     false,
                     udp_msg_rx,
-                    rx2
+                    rx2,
                 )
                 .unwrap();
             });
