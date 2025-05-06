@@ -3,7 +3,7 @@ use cpal::{
     ChannelCount, InputCallbackInfo, OutputCallbackInfo, Sample, Stream, StreamConfig,
     traits::DeviceTrait,
 };
-use ringbuf::{HeapCons, HeapProd, traits::Producer};
+use ringbuf::{traits::{Observer, Producer}, HeapCons, HeapProd};
 use std::{
     fmt::Debug,
     sync::{Arc, Mutex, mpsc::Sender},
@@ -63,9 +63,8 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                             &mut writer,
                             config.selected_channels.clone(),
                             channel_count,
+                            cpal_channel_tx.clone()
                         );
-
-                        cpal_channel_tx.send(true).unwrap();
 
                         if config.send_stats {
                             stats
@@ -132,6 +131,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         writer: &mut Option<DebugWavWriter>,
         selected_channels: Vec<usize>,
         channel_count: u16, //stats: Arc<Sender<CpalStats>>,
+        cpal_channel_tx: Sender<bool>
     ) -> usize {
         let mut consumed = 0;
 
@@ -144,13 +144,22 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         .unwrap();
 
         //println!("Buffer Size inside cpal: {}, CPAL Len: {}", output.capacity(), data.len());
+       
 
         // Iterate through the input buffer and save data
         for s in splitter {
             if s.on_selected_channel {
                 if !cfg!(test) {
-                    output.try_push(*s.sample).unwrap();
-                    write_debug(writer, *s.sample);
+
+                    if let Ok(()) = output.try_push(*s.sample) {
+                        write_debug(writer, *s.sample);
+                    } else {
+                        println!("OVERFLOW - Data Length: {}, Occ: {}", data.len(), output.occupied_len());
+                        cpal_channel_tx.send(true).unwrap();
+                        return consumed
+                    }
+                    //output.try_push(*s.sample).unwrap();
+
                 } else {
                     output.try_push(Sample::EQUILIBRIUM).unwrap();
                 }
@@ -158,6 +167,8 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
             consumed += 1;
         }
+        cpal_channel_tx.send(true).unwrap();
+
         consumed
     }
 
@@ -266,7 +277,7 @@ mod tests {
 
         let mut prod = adapter.prod.lock().unwrap();
         
-        CpalAudioDebugAdapter::process_input(data.as_slice(), None, &mut prod, &mut None, vec![0], 1);
+        //CpalAudioDebugAdapter::process_input(data.as_slice(), None, &mut prod, &mut None, vec![0], 1);
         
         let cons = adapter.cons.lock().unwrap();
 

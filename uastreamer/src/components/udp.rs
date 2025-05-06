@@ -114,7 +114,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                 //if buffer_consumer.is_full() {
                 // TODO Check if this might slow down communication
                 let mut network_buffer: Box<[T]> =
-                    vec![T::default(); buffer_consumer.capacity().into()].into_boxed_slice();
+                    vec![T::default(); buffer_consumer.occupied_len()].into_boxed_slice();
 
                 // get buffer size before changes
                 let pre_occupied_buffer = buffer_consumer.occupied_len();
@@ -128,7 +128,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                 // The Casted UDP Packet
                 let udp_packet: &[u8] = bytemuck::cast_slice(&network_buffer);
 
-                println!("Sending {:?}", udp_packet);
+                //println!("Sending {:?}", udp_packet);
                 let _sent_s = socket.send(udp_packet).unwrap();
 
                 // Send statistics to the channel
@@ -183,7 +183,8 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             dbg!(cap);
 
             // create the temporary network buffer needed to capture the network samples
-            let mut temp_network_buffer: Box<[u8]> = vec![0u8; cap * byte_size].into_boxed_slice();
+            //let mut temp_network_buffer: Box<[u8]> = vec![0u8; cap * byte_size].into_boxed_slice();
+            let mut temp_network_buffer: Box<[u8]> = vec![].into_boxed_slice();
 
             // Receive from the Network
             match socket.recv(&mut temp_network_buffer) {
