@@ -132,6 +132,8 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                         })
                         .unwrap();
                 }
+            } else {
+                //println!("Buffer not full");
             }
         }
     }
