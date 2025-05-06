@@ -48,7 +48,6 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         buffer_consumer: Arc<Mutex<HeapCons<T>>>,
         buffer_producer: Arc<Mutex<HeapProd<T>>>,
         stats: Option<Sender<NetworkUDPStats>>,
-        send_network_stats: bool,
         udp_msg_rx: Receiver<UdpStatus>,
         chan_sync: Receiver<bool>,
     ) -> std::io::Result<()> {
@@ -122,7 +121,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                 let mut seq = 0;
                 while !buffer_consumer.is_empty() {
                     let mut data_buf: Box<[T]> =
-                        vec![T::default(); MAX_UDP_DATA_LENGTH.into()].into_boxed_slice();
+                        vec![T::default(); 65535].into_boxed_slice();
                     let consumed = buffer_consumer.pop_slice(&mut data_buf);
                     let udp_data: &[u8] = bytemuck::cast_slice(&data_buf[..consumed]);
 
@@ -133,58 +132,11 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                         data: udp_data.to_vec(),
                     };
 
-                    //let set = bincode::encode_to_vec(packet, config).unwrap();
                     let set = bincode2::serialize(&packet).unwrap();
 
                     let _sent_s = socket.send(&set).unwrap();
                     seq += 1;
                 }
-
-                //if buffer_consumer.is_full() {
-                // TODO Check if this might slow down communication
-                /*let mut network_buffer: Box<[T]> =
-                vec![T::default(); buffer_consumer.occupied_len()].into_boxed_slice();*/
-
-                // get buffer size before changes
-                //let pre_occupied_buffer = buffer_consumer.occupied_len();
-
-                // Place the network buffer onto the stack
-                //let consumed = buffer_consumer.pop_slice(&mut network_buffer);
-
-                // Occupied Size after operation
-                /*let post_occupied_buffer = buffer_consumer.occupied_len();
-
-                // The Casted UDP Packet
-                let udp_data: &[u8] = bytemuck::cast_slice(&network_buffer);
-
-                let packet = UdpAudioPacket {
-                    sequence: 0,
-                    total_len: buffer_consumer.capacity().into(),
-                    data_len: consumed,
-                    data: udp_data.to_vec(),
-                };
-
-                let set = bincode::encode_to_vec(packet, config).unwrap();
-
-                let _sent_s = socket.send(&set).unwrap();*/
-
-                //println!("Sending {:?}", udp_packet);
-                //let _sent_s = socket.send(udp_packet).unwrap();
-
-                // Send statistics to the channel
-                /*if let Some(ref s) = stats {
-                    s.send(NetworkUDPStats {
-                        sent: None,
-                        received: None,
-                        pre_occupied_buffer: 0,
-                        post_occupied_buffer: 0,
-                    })
-                    .unwrap();
-                }*/
-                /*if send_network_stats {
-
-                }
-                */
             } else {
                 //println!("Buffer not full");
             }
@@ -201,9 +153,6 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         //udp_channel: Receiver<bool>,
         udp_msg: Receiver<UdpStatus>,
     ) {
-        // How big is one byte?
-        let byte_size = size_of::<T>();
-
         //let buffer_producer = self.udp_get_producer();
 
         //let stats = self.get_udp_stats_sender();
@@ -236,7 +185,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                     // Convert the buffered network samples to the specified sample format
                     let converted_samples: &[T] = bytemuck::cast_slice(&packet.data);
 
-                    let pre_occupied_buffer = prod.occupied_len();
+                    //let pre_occupied_buffer = prod.occupied_len();
 
                     // Transfer Samples bytewise
                     for &sample in converted_samples {
@@ -244,7 +193,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                         let _ = prod.try_push(sample);
                     }
 
-                    let post_occupied_buffer = prod.occupied_len();
+                    //let post_occupied_buffer = prod.occupied_len();
 
                     // Send Statistics about the current operation to the stats channel
                     /*if let Some(ref s) = stats {
@@ -366,7 +315,6 @@ mod tests {
                 sender.audio_buffer_cons,
                 sender.audio_buffer_prod,
                 Some(sender.udp_stats_sender),
-                false,
                 udp_msg_rx,
                 rx,
             )
@@ -407,7 +355,6 @@ mod tests {
                 cons,
                 prod,
                 Some(receiver.udp_stats_sender),
-                false,
                 udp_msg_rx,
                 rx,
             )
@@ -427,7 +374,6 @@ mod tests {
                 cons,
                 prod,
                 Some(sender.udp_stats_sender),
-                false,
                 udp_msg_rx,
                 rx,
             )
@@ -480,7 +426,6 @@ mod tests {
                     cons,
                     prod,
                     Some(receiver.udp_stats_sender),
-                    false,
                     udp_msg_rx,
                     rx1,
                 )
@@ -498,7 +443,6 @@ mod tests {
                     cons,
                     prod,
                     Some(sender.udp_stats_sender),
-                    false,
                     udp_msg_rx,
                     rx2,
                 )

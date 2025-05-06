@@ -328,7 +328,7 @@ where
             let stats = self.get_udp_stats_sender();
             dbg!(&target);
 
-            let mut t = target.clone();
+            let t = target.clone();
             //t.set_ip(IpAddr::from_str("0.0.0.0").unwrap());
             //t.set_port(42069);
 
@@ -341,7 +341,6 @@ where
                     cons,
                     prod,
                     Some(stats),
-                    config.send_stats,
                     udp_msg_rx,
                     chan_sync_rx
 

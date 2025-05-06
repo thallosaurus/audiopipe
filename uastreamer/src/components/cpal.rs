@@ -154,8 +154,10 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                         write_debug(writer, *s.sample);
                     } else {
                         println!("OVERFLOW - Data Length: {}, Occ: {}", data.len(), output.occupied_len());
+
+                        // Urge the UDP thread to send the buffer immediately
                         cpal_channel_tx.send(true).unwrap();
-                        return consumed
+                        //return consumed
                     }
                     //output.try_push(*s.sample).unwrap();
 
