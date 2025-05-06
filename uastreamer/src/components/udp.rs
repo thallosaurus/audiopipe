@@ -172,7 +172,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                 //let _sent_s = socket.send(udp_packet).unwrap();
 
                 // Send statistics to the channel
-                if let Some(ref s) = stats {
+                /*if let Some(ref s) = stats {
                     s.send(NetworkUDPStats {
                         sent: None,
                         received: None,
@@ -180,7 +180,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                         post_occupied_buffer: 0,
                     })
                     .unwrap();
-                }
+                }*/
                 /*if send_network_stats {
 
                 }
