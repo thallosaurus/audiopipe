@@ -124,7 +124,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                     let mut data_buf: Box<[T]> =
                         vec![T::default(); MAX_UDP_DATA_LENGTH.into()].into_boxed_slice();
                     let consumed = buffer_consumer.pop_slice(&mut data_buf);
-                    let udp_data: &[u8] = bytemuck::cast_slice(&data_buf);
+                    let udp_data: &[u8] = bytemuck::cast_slice(&data_buf[..consumed]);
 
                     let packet = UdpAudioPacket {
                         //sequence: seq,
