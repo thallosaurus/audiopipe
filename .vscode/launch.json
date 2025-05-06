@@ -80,7 +80,13 @@
                     "kind": "bin"
                 }
             },
-            "args": [],
+            "args": [
+                "-n 10.0.0.30:42069",
+                "-d \"CABLE Output (VB-Audio Virtual Cable)\"",
+                "-c 0",
+                "-c 1",
+                "-b 1024"
+            ],
             "cwd": "${workspaceFolder}"
         },
         {

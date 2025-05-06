@@ -15,7 +15,7 @@ use ratatui::{
     widgets::{Block, Paragraph, Widget},
 };
 
-use crate::{components::{cpal::CpalStats, udp::UdpStats}, AppDebug, Direction};
+use crate::{components::{cpal::CpalStats, udp::NetworkUDPStats}, AppDebug, Direction};
 
 pub fn tui(
     direction: Direction,
@@ -43,7 +43,7 @@ pub fn tui(
 #[derive(Debug)]
 pub struct TuiApp {
     exit: bool,
-    net_stats: Arc<Mutex<Receiver<UdpStats>>>,
+    net_stats: Arc<Mutex<Receiver<NetworkUDPStats>>>,
     cpal_stats: Arc<Mutex<Receiver<CpalStats>>>,
     device_name: String,
     direction: Direction,
@@ -112,7 +112,7 @@ impl Widget for &TuiApp {
         let (net_stats, cpal_stats) = (
             net_stats
                 .recv_timeout(Duration::from_millis(250))
-                .unwrap_or(UdpStats::default()),
+                .unwrap_or(NetworkUDPStats::default()),
             cpal_stats
                 .recv_timeout(Duration::from_millis(250))
                 .unwrap_or(CpalStats::default()),

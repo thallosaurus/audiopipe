@@ -16,7 +16,7 @@ use bytemuck::Pod;
 use components::{
     control::TcpControlFlow,
     cpal::{CpalAudioFlow, CpalStats},
-    udp::{UdpStats, UdpStatus, UdpStreamFlow},
+    udp::{NetworkUDPStats, UdpStatus, UdpStreamFlow},
 };
 use cpal::{traits::*, *};
 use hound::WavWriter;
@@ -198,7 +198,7 @@ pub struct App<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     audio_buffer_prod: Arc<Mutex<HeapProd<T>>>,
     audio_buffer_cons: Arc<Mutex<HeapCons<T>>>,
     cpal_stats_sender: Sender<CpalStats>,
-    udp_stats_sender: Sender<UdpStats>,
+    udp_stats_sender: Sender<NetworkUDPStats>,
     _config: Arc<Mutex<StreamerConfig>>,
     pub pool: ThreadPool,
     //thread_channels: Option<(Sender<bool>, Sender<bool>)>,
@@ -217,7 +217,7 @@ where
         let (audio_buffer_prod, audio_buffer_cons) = audio_buffer.split();
 
         let (cpal_stats_sender, cpal_stats_receiver) = mpsc::channel::<CpalStats>();
-        let (udp_stats_sender, udp_stats_receiver) = mpsc::channel::<UdpStats>();
+        let (udp_stats_sender, udp_stats_receiver) = mpsc::channel::<NetworkUDPStats>();
 
         (
             Self {
@@ -239,7 +239,7 @@ where
 
 pub struct AppDebug {
     cpal_stats_receiver: Receiver<CpalStats>,
-    udp_stats_receiver: Receiver<UdpStats>,
+    udp_stats_receiver: Receiver<NetworkUDPStats>,
 }
 
 impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> CpalAudioFlow<T> for App<T> {
@@ -265,7 +265,7 @@ impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> UdpStreamFlo
         self.audio_buffer_cons.clone()
     }
 
-    fn get_udp_stats_sender(&self) -> Sender<UdpStats> {
+    fn get_udp_stats_sender(&self) -> Sender<NetworkUDPStats> {
         self.udp_stats_sender.clone()
     }
 }
@@ -340,7 +340,7 @@ where
                     t,
                     cons,
                     prod,
-                    stats,
+                    Some(stats),
                     config.send_stats,
                     udp_msg_rx,
                     chan_sync_rx

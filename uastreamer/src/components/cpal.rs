@@ -45,8 +45,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
         Ok(match direction {
             Direction::Sender => {
-                //                let output = self.get_producer();
-                let mut writer = create_wav_writer("sender_dump".to_owned(), 1, 44100)?;
+                let mut writer = create_wav_writer("sender_dump".to_owned(), config.selected_channels.len() as u16, 48000)?;
 
                 device.build_input_stream(
                     &cpal_config,
@@ -83,7 +82,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             }
             Direction::Receiver => {
                 //let cons = self.get_consumer();
-                let mut writer = create_wav_writer("receiver_dump".to_owned(), 1, 44100)?;
+                let mut writer = create_wav_writer("receiver_dump".to_owned(), config.selected_channels.len() as u16, 48000)?;
 
                 device.build_output_stream(
                     &cpal_config,

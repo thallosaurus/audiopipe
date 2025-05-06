@@ -213,7 +213,7 @@ pub trait TcpControlFlow {
                 Self::write_buffer(&stream, packet)?;
 
                 #[cfg(not(test))]
-                println!("receiver Runing as test");
+                println!("receiver Running as test");
 
                 // then we have to wait until the connection is closed or dropped
                 loop {
