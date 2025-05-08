@@ -117,6 +117,8 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
             // Only send the network package if the network buffer is full or we got the signal
             if chan_sync.try_recv().unwrap_or(false) || buffer_consumer.is_full() {
+                
+                //TODO: find out if this might be the epicenter of the glitches
                 while !buffer_consumer.is_empty() {
                     let mut data_buf: Box<[T]> =
                         vec![T::default(); MAX_UDP_PACKET_LENGTH].into_boxed_slice();
