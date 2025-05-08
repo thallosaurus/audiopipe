@@ -144,7 +144,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         writer: &mut Option<DebugWavWriter>,
         selected_channels: Vec<usize>,
         channel_count: u16, //stats: Arc<Sender<CpalStats>>,
-        cpal_channel_tx: Sender<bool>,
+        udp_urge_channel: Sender<bool>,
     ) -> usize {
         let mut consumed = 0;
 
@@ -172,7 +172,10 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                         );
 
                         // Urge the UDP thread to send the buffer immediately
-                        cpal_channel_tx.send(true).unwrap();
+                        //udp_urge_channel.send(true).unwrap();
+
+                        // drop remaining samples
+                        break;
                         //return consumed
                     }
                     //output.try_push(*s.sample).unwrap();
@@ -183,7 +186,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
             consumed += 1;
         }
-        cpal_channel_tx.send(true).unwrap();
+        udp_urge_channel.send(true).unwrap();
 
         consumed
     }
@@ -217,12 +220,6 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                     *sample = Sample::EQUILIBRIUM;
                 }
             }
-
-            // If the program runs in debug mode, the debug wav writer becomes available
-            /*#[cfg(debug_assertions)]
-            if let Some(writer) = writer {
-                writer.write_sample(*sample).unwrap();
-            }*/
 
             consumed += 1;
         }

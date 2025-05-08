@@ -199,6 +199,9 @@ pub struct App<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     audio_buffer_cons: Arc<Mutex<HeapCons<T>>>,
     cpal_stats_sender: Sender<CpalStats>,
     udp_stats_sender: Sender<NetworkUDPStats>,
+    udp_command_sender: Option<Sender<UdpStatus>>,
+    cpal_command_sender: Option<Sender<CpalStatus>>,
+    
     _config: Arc<Mutex<StreamerConfig>>,
     pub pool: ThreadPool,
     //thread_channels: Option<(Sender<bool>, Sender<bool>)>,
@@ -227,6 +230,8 @@ where
                 udp_stats_sender,
                 _config: Arc::new(Mutex::new(config)),
                 pool: ThreadPool::new(5),
+                udp_command_sender: None,
+                cpal_command_sender: None,
                 //thread_channels: None,
             },
             AppDebug {
@@ -278,13 +283,16 @@ where
         &mut self,
         config: StreamerConfig,
         target: SocketAddr,
-    ) -> anyhow::Result<StartedStream> {
+    ) -> anyhow::Result<()> {
         // Sync Channel for the buffer
         // If sent, the udp thread is instructed to empty the contents of the buffer and send them
         let (chan_sync_tx, chan_sync_rx) = channel::<bool>();
         
         let (cpal_channel_tx, cpal_channel_rx) = channel::<CpalStatus>();
         let (udp_msg_tx, udp_msg_rx) = channel::<UdpStatus>();
+
+        self.udp_command_sender = Some(udp_msg_tx);
+        self.cpal_command_sender = Some(cpal_channel_tx);
 
         //start video capture and udp sender here
         let dir = config.direction;
@@ -323,6 +331,7 @@ where
                     if let Ok(msg) = cpal_channel_rx.try_recv() {
                         match msg {
                             CpalStatus::DidEnd => {
+                                println!("Stopping CPAL Stream");
                                 break
                             },
                         }
@@ -355,7 +364,7 @@ where
                 .unwrap();
             });
         }
-        Ok((udp_msg_tx,cpal_channel_tx))
+        Ok(())
     }
 
     fn stop_stream(&self) -> anyhow::Result<()> {
@@ -363,6 +372,14 @@ where
             ch1.send(true)?;
             ch2.send(true)?;
         }*/
+
+        if let Some(ch) = &self.udp_command_sender {
+            ch.send(UdpStatus::DidEnd).unwrap();
+        }
+
+        if let Some(ch) = &self.cpal_command_sender {
+            ch.send(CpalStatus::DidEnd).unwrap();
+        }
 
         Ok(())
     }

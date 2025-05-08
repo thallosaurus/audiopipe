@@ -126,11 +126,11 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             let mut buffer_consumer = buffer_consumer.lock().unwrap();
 
             // Only send the network package if the network buffer is full or we got the signal
-            if chan_sync.try_recv().unwrap_or(false) || buffer_consumer.is_full() {
+            if chan_sync.try_recv().unwrap_or(false) || buffer_consumer.is_full() && !buffer_consumer.is_empty() {
                 
                 // find out if this might be the epicenter of the glitches
                 // 08.05.2025: no, but removing it makes bytemuck on receiver side angry
-                while !buffer_consumer.is_empty() {
+                //while !buffer_consumer.is_empty() {
                     let mut data_buf: Box<[T]> =
                         vec![T::default(); MAX_UDP_PACKET_LENGTH].into_boxed_slice();
                     let consumed = buffer_consumer.pop_slice(&mut data_buf);
@@ -148,7 +148,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
                     let _sent_s = socket.send(&set).unwrap();
                     seq += 1;
-                }
+                //}
             }
         }
     }

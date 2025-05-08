@@ -11,9 +11,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Direction, config::StreamerConfig};
 
-use super::{cpal::CpalStatus, udp::{UdpReceiverCommands, UdpSenderCommands, UdpStatus}};
+use super::{
+    cpal::CpalStatus,
+    udp::{UdpReceiverCommands, UdpSenderCommands, UdpStatus},
+};
 
-pub type StartedStream = (Sender<UdpStatus>,Sender<CpalStatus>);
+pub type StartedStream = (Sender<UdpStatus>, Sender<CpalStatus>);
 
 const MAX_TCP_PACKET_SIZE: usize = 65535;
 
@@ -61,6 +64,7 @@ pub trait TcpControlFlow {
                     streamer_config,
                     sender_commands.expect("sender loop needs sender commands"),
                 )?;
+                self.stop_stream().unwrap();
             }
             Direction::Receiver => {
                 let listener = Self::create_new_tcp_listener(target)?;
@@ -70,13 +74,14 @@ pub trait TcpControlFlow {
                     streamer_config,
                     receiver_commands.expect("receiver loop needs receiver commands"),
                 )?;
+                self.stop_stream().unwrap();
             }
         }
         Ok(())
     }
 
     /// This method gets called to start the udp stream
-    fn start_stream(&mut self, config: StreamerConfig, target: SocketAddr) -> anyhow::Result<StartedStream>;
+    fn start_stream(&mut self, config: StreamerConfig, target: SocketAddr) -> anyhow::Result<()>;
 
     /// This method gets called to stop running udp stream
     fn stop_stream(&self) -> anyhow::Result<()>;
@@ -158,8 +163,9 @@ pub trait TcpControlFlow {
                     }
                     TcpControlState::Ping => todo!(),
                     TcpControlState::Disconnect => {
+                        //self.stop_stream().unwrap();
                         break;
-                    },
+                    }
                     TcpControlState::Error => todo!(),
                     TcpControlState::Connect => todo!(),
                 }
@@ -189,67 +195,66 @@ pub trait TcpControlFlow {
     ) -> std::io::Result<()> {
         //for stream in listener.incoming() {
         let (mut stream, _) = listener.accept()?;
-            //let device = device.clone();
-            println!("Connected");
+        //let device = device.clone();
+        println!("Connected");
 
-            // Assign a random port for the new Stream
-            //let mut stream = stream?;
-            let mut own_ip = stream.local_addr()?;
-            let mut rng = rand::rng();
-            let port = rng.random_range(30000..40000);
-            own_ip.set_port(port);
+        // Assign a random port for the new Stream
+        //let mut stream = stream?;
+        let mut own_ip = stream.local_addr()?;
+        let mut rng = rand::rng();
+        let port = rng.random_range(30000..40000);
+        own_ip.set_port(port);
 
-            //stream.set_read_timeout(Some(Duration::from_millis(500)))?;
-            stream.set_nonblocking(true)?;
+        //stream.set_read_timeout(Some(Duration::from_millis(500)))?;
+        stream.set_nonblocking(true)?;
 
-            let mut framesize_buffer = [0u8; 65535];
+        let mut framesize_buffer = [0u8; 65535];
 
-            loop {
-                if let Ok(msg) = receiver_commands.try_recv() {
-                    match msg {
-                        UdpReceiverCommands::Stop => {
-                            let packet = TcpControlPacket {
-                                state: TcpControlState::Disconnect,
-                            };
-    
-                            dbg!(&packet);
-    
-                            Self::write_to_stream(&stream, packet)?;
-                            break;
-                        }
-                    }
-                }
+        loop {
+            if let Ok(msg) = receiver_commands.try_recv() {
+                match msg {
+                    UdpReceiverCommands::Stop => {
+                        let packet = TcpControlPacket {
+                            state: TcpControlState::Disconnect,
+                        };
 
-                if let Ok(size) = stream.peek(&mut framesize_buffer) {
-                    let connection_packet = Self::read_from_stream(&mut stream)?;
-                    match connection_packet.state {
-                        TcpControlState::Connect => {
-                            let _streamer =
-                                self.start_stream(streamer_config.clone(), own_ip).unwrap();
+                        dbg!(&packet);
 
-                            let packet = TcpControlPacket {
-                                //#[cfg(debug_assertions)]
-                                state: TcpControlState::Endpoint(
-                                    own_ip.to_string(),
-                                    EndpointPayload {
-                                        channels: streamer_config.selected_channels.len() as u16,
-                                        buffer_size: streamer_config.buffer_size,
-                                    },
-                                ),
-                            };
-
-                            // send back endpoint
-                            Self::write_to_stream(&stream, packet)?;
-                        }
-                        TcpControlState::Endpoint(_, endpoint_payload) => todo!(),
-                        TcpControlState::Ping => todo!(),
-                        TcpControlState::Disconnect => {
-                            break;
-                        },
-                        TcpControlState::Error => todo!(),
+                        Self::write_to_stream(&stream, packet)?;
+                        break;
                     }
                 }
             }
+
+            if let Ok(size) = stream.peek(&mut framesize_buffer) {
+                let connection_packet = Self::read_from_stream(&mut stream)?;
+                match connection_packet.state {
+                    TcpControlState::Connect => {
+                        let _streamer = self.start_stream(streamer_config.clone(), own_ip).unwrap();
+
+                        let packet = TcpControlPacket {
+                            //#[cfg(debug_assertions)]
+                            state: TcpControlState::Endpoint(
+                                own_ip.to_string(),
+                                EndpointPayload {
+                                    channels: streamer_config.selected_channels.len() as u16,
+                                    buffer_size: streamer_config.buffer_size,
+                                },
+                            ),
+                        };
+
+                        // send back endpoint
+                        Self::write_to_stream(&stream, packet)?;
+                    }
+                    TcpControlState::Endpoint(_, endpoint_payload) => todo!(),
+                    TcpControlState::Ping => todo!(),
+                    TcpControlState::Disconnect => {
+                        break;
+                    }
+                    TcpControlState::Error => todo!(),
+                }
+            }
+        }
 
         Ok(())
     }
@@ -288,7 +293,12 @@ mod tests {
 
     use threadpool::ThreadPool;
 
-    use crate::{args::NewCliArgs, components::{cpal::CpalStatus, udp::UdpStatus}, config::StreamerConfig, Direction};
+    use crate::{
+        Direction,
+        args::NewCliArgs,
+        components::{cpal::CpalStatus, udp::UdpStatus},
+        config::StreamerConfig,
+    };
 
     use super::{StartedStream, TcpControlFlow, UdpReceiverCommands, UdpSenderCommands};
 
@@ -298,13 +308,13 @@ mod tests {
             &mut self,
             _config: StreamerConfig,
             _target: SocketAddr,
-        ) -> anyhow::Result<StartedStream> {
+        ) -> anyhow::Result<()> {
             println!("Creating Debug Stream");
             assert!(true);
 
             let (cpal_msg_tx, cpal_msg_rx) = channel::<CpalStatus>();
             let (udp_msg_tx, udp_msg_rx) = channel::<UdpStatus>();
-            Ok((udp_msg_tx,cpal_msg_tx))
+            Ok(())
         }
 
         fn stop_stream(&self) -> anyhow::Result<()> {
