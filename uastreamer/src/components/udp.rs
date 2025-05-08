@@ -3,13 +3,13 @@ use std::{
     io::ErrorKind,
     net::{SocketAddr, UdpSocket},
     sync::{
-        Arc, Mutex,
-        mpsc::{Receiver, Sender},
+        mpsc::{Receiver, Sender}, Arc, Mutex
     },
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use bytemuck::Pod;
+use log::info;
 use ringbuf::{
     HeapCons, HeapProd,
     traits::{Consumer, Observer, Producer},
@@ -37,6 +37,7 @@ const MAX_UDP_PACKET_LENGTH: usize = 65535;
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 struct UdpAudioPacket {
     sequence: u64,
+    timestamp: SystemTime,
     data: Vec<u8>,
 }
 
@@ -65,7 +66,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             Direction::Sender => {
                 let socket = UdpSocket::bind("0.0.0.0:0")?;
                 //let f = format!("{}:{}", target, config.port);
-                println!("[FLOW] Connecting UDP to {}", target);
+                info!("Connecting UDP to {}", target);
                 socket.connect(target)?;
 
                 Self::udp_sender_loop(
@@ -80,7 +81,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             Direction::Receiver => {
                 // The receiver listens on local_port:ip.
                 let socket = UdpSocket::bind(target)?;
-                println!("[FLOW] Receiving UDP on {}", target);
+                info!("Receiving UDP on {}", target);
 
                 socket
                     .set_read_timeout(Some(Duration::from_secs(3)))
@@ -140,8 +141,10 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                         //sequence: seq,
                         //total_len: consumed * size_of::<u8>(),
                         //data_len: udp_data.len(),
+                        
                         data: udp_data.to_vec(),
                         sequence: seq,
+                        timestamp: SystemTime::now(),
                     };
 
                     let set = bincode2::serialize(&packet).unwrap();
@@ -174,7 +177,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             if let Ok(msg) = udp_msg.try_recv() {
                 match msg {
                     UdpStatus::DidEnd => {
-                        println!("Exiting UDP Receiver Loop");
+                        info!("Exiting UDP Receiver Loop");
                         break;
                     }
                 }

@@ -1,6 +1,6 @@
 /target
-*_dump.wav
+/dump
 .DS_Store
 test-gui/
 test-app/
-logs/
+/logs

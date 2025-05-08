@@ -2,6 +2,8 @@ PHONY: clean macos_cli
 
 clean:
 	@rm -rf target
+	@rm -rf dump
+	@rm -rf logs
 
 macos_cli:
 	@cargo build --release --target=aarch64-apple-darwin --bin sender

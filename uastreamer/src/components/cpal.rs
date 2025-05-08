@@ -3,6 +3,7 @@ use cpal::{
     ChannelCount, InputCallbackInfo, OutputCallbackInfo, Sample, Stream, StreamConfig,
     traits::DeviceTrait,
 };
+use log::warn;
 use ringbuf::{
     HeapCons, HeapProd,
     traits::{Observer, Producer},
@@ -185,7 +186,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             consumed += 1;
         }
         if dropped > 0 {
-            println!(
+            warn!(
                 "OVERFLOW - Dropped {} Samples",
                 dropped
             );
@@ -246,7 +247,7 @@ mod tests {
 
     use ringbuf::{
         HeapCons, HeapProd, HeapRb,
-        traits::{Observer, Split},
+        traits::Split,
     };
 
     use super::{CpalAudioFlow, CpalStats};

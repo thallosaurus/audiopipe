@@ -1,12 +1,14 @@
 use std::sync::mpsc::channel;
 
 use uastreamer::{
-    components::{control::TcpControlFlow, udp::UdpSenderCommands}, config::StreamerConfig, App, Direction
+    components::{control::TcpControlFlow, udp::UdpSenderCommands}, config::StreamerConfig, ualog::SimpleLogger, App, Direction
 };
 
 fn main() {
-    //let app = App
+    log::set_logger(&SimpleLogger {}).unwrap();
     let config = StreamerConfig::from_cli_args(Direction::Sender).unwrap();
+    log::set_max_level(config.program_args.verbose.log_level_filter());
+
     let (mut app, _) = App::<f32>::new(config.clone());
 
     let (cmd_tx, cmd_rx) = channel::<UdpSenderCommands>();
@@ -14,4 +16,5 @@ fn main() {
     app.tcp_serve(config, Some(cmd_rx), None).unwrap();
 
     app.pool.join();
+
 }

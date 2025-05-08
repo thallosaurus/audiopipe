@@ -14,7 +14,7 @@ use std::{
 use bytemuck::Pod;
 
 use components::{
-    control::{StartedStream, TcpControlFlow},
+    control::{StartedStream, TcpControlFlow, TcpErrors},
     cpal::{CpalAudioFlow, CpalStats, CpalStatus},
     udp::{NetworkUDPStats, UdpStatus, UdpStreamFlow},
 };
@@ -22,11 +22,13 @@ use cpal::{traits::*, *};
 use hound::WavWriter;
 
 use config::{StreamerConfig, get_cpal_config};
+use log::{debug, error, info, set_logger};
 use ringbuf::{
     HeapCons, HeapProd,
     traits::{Observer, Split},
 };
 use threadpool::ThreadPool;
+use ualog::SimpleLogger;
 
 /// Default Port if none is specified
 pub const DEFAULT_PORT: u16 = 42069;
@@ -57,6 +59,8 @@ pub mod config;
 
 /// Holds all flows this app offers
 pub mod components;
+
+pub mod ualog;
 
 /// Defines the behavior of the stream
 ///
@@ -212,10 +216,10 @@ where
     T: cpal::SizedSample + Send + Pod + Default + Debug + 'static,
 {
     pub fn new(config: StreamerConfig) -> (Self, AppDebug) {
-        dbg!(&config);
+        debug!("Using Config: {:?}", &config);
         let audio_buffer =
             ringbuf::HeapRb::<T>::new(config.buffer_size * config.selected_channels.len());
-        println!("{}", audio_buffer.capacity());
+        info!("Audio Buffer Size: {}", audio_buffer.capacity());
 
         let (audio_buffer_prod, audio_buffer_cons) = audio_buffer.split();
 
@@ -283,7 +287,7 @@ where
         &mut self,
         config: StreamerConfig,
         target: SocketAddr,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), TcpErrors> {
         // Sync Channel for the buffer
         // If sent, the udp thread is instructed to empty the contents of the buffer and send them
         let (chan_sync_tx, chan_sync_rx) = channel::<bool>();
@@ -297,7 +301,7 @@ where
         //start video capture and udp sender here
         let dir = config.direction;
         {
-            dbg!("Constructing CPAL Stream");
+            info!("Constructing CPAL Stream");
             let stats = self.get_cpal_stats_sender();
             let prod = self.get_producer();
             let cons = self.get_consumer();
@@ -312,7 +316,7 @@ where
                 .unwrap();
 
                 //let device = device.lock().unwrap();
-                let _stream = Self::construct_stream(
+                match Self::construct_stream(
                     dir,
                     &d,
                     stream_config,
@@ -321,31 +325,32 @@ where
                     prod,
                     cons,
                     chan_sync_tx,
-                )
-                .unwrap();
-
-                _stream.play().unwrap();
-
-                loop {
-                    //block
-                    if let Ok(msg) = cpal_channel_rx.try_recv() {
-                        match msg {
-                            CpalStatus::DidEnd => {
-                                println!("Stopping CPAL Stream");
-                                break
-                            },
+                ) {
+                    Ok(stream) => {
+                        stream.play().unwrap();
+                        loop {
+                            //block
+                            if let Ok(msg) = cpal_channel_rx.try_recv() {
+                                match msg {
+                                    CpalStatus::DidEnd => {
+                                        println!("Stopping CPAL Stream");
+                                        break
+                                    },
+                                }
+                            }
                         }
-                    }
+                    },
+                    Err(err) => error!("{}", err),
                 }
             });
         }
 
         {
-            dbg!("Constructing UDP Stream");
+            info!("Constructing UDP Stream");
             let prod = self.udp_get_producer();
             let cons = self.udp_get_consumer();
             let stats = self.get_udp_stats_sender();
-            dbg!(&target);
+            debug!("{:?}", target);
 
             let t = target.clone();
             //t.set_ip(IpAddr::from_str("0.0.0.0").unwrap());

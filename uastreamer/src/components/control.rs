@@ -6,6 +6,7 @@ use std::{
     time::Duration,
 };
 
+use log::{debug, error, info, trace};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
@@ -19,6 +20,11 @@ use super::{
 pub type StartedStream = (Sender<UdpStatus>, Sender<CpalStatus>);
 
 const MAX_TCP_PACKET_SIZE: usize = 65535;
+
+#[derive(Debug)]
+pub enum TcpErrors {
+    ConstructStreamError
+}
 
 /// Contains methods that implement the tcp control functionality
 ///
@@ -39,6 +45,10 @@ pub trait TcpControlFlow {
         TcpStream::connect_timeout(&addr, Duration::from_secs(5))
     }
 
+    fn stop_serve() {
+
+    }
+
     /// Serves the TCP Communication Stack
     fn tcp_serve(
         &mut self,
@@ -57,23 +67,27 @@ pub trait TcpControlFlow {
         match streamer_config.direction {
             Direction::Sender => {
                 let mut stream = Self::create_new_tcp_stream(target)?;
-                println!("connecting to {}", target);
-                self.sender_loop(
+                info!("connecting to {}", target);
+                if let Err(e) = self.sender_loop(
                     target,
                     &mut stream,
                     streamer_config,
                     sender_commands.expect("sender loop needs sender commands"),
-                )?;
+                ) {
+                    error!("TCP Sender Loop Error: {}", e);
+                };
                 self.stop_stream().unwrap();
             }
             Direction::Receiver => {
                 let listener = Self::create_new_tcp_listener(target)?;
-                println!("listening to {}", target);
-                self.receiver_loop(
+                info!("listening to {}", target);
+                if let Err(e) = self.receiver_loop(
                     listener,
                     streamer_config,
                     receiver_commands.expect("receiver loop needs receiver commands"),
-                )?;
+                ) {
+                    error!("TCP Receiver Loop Error: {}", e);
+                }
                 self.stop_stream().unwrap();
             }
         }
@@ -81,7 +95,7 @@ pub trait TcpControlFlow {
     }
 
     /// This method gets called to start the udp stream
-    fn start_stream(&mut self, config: StreamerConfig, target: SocketAddr) -> anyhow::Result<()>;
+    fn start_stream(&mut self, config: StreamerConfig, target: SocketAddr) -> Result<(), TcpErrors>;
 
     /// This method gets called to stop running udp stream
     fn stop_stream(&self) -> anyhow::Result<()>;
@@ -94,8 +108,7 @@ pub trait TcpControlFlow {
         reader.read_line(&mut buf)?;
 
         let json = serde_json::from_str(&buf)?;
-
-        dbg!(&json);
+        debug!("< Read Packet: {:?}", json);
 
         Ok(json)
     }
@@ -104,8 +117,10 @@ pub trait TcpControlFlow {
     fn write_to_stream(stream: &TcpStream, packet: TcpControlPacket) -> std::io::Result<()> {
         let mut buf_writer = BufWriter::new(stream);
 
+        debug!("> Sending Packet: {:?}", packet);
+        
         let json = serde_json::to_vec(&packet)?;
-
+        
         buf_writer.write_all(&json)?;
         buf_writer.write(b"\r\n")?;
         buf_writer.flush()?;
@@ -132,17 +147,17 @@ pub trait TcpControlFlow {
         Self::write_to_stream(&stream, packet)?;
 
         let mut framesize_buffer = [0u8; MAX_TCP_PACKET_SIZE];
+        trace!("Framesize Buffer Size: {}", framesize_buffer.len());
 
         loop {
             // read command channel first
             if let Ok(msg) = sender_commands.try_recv() {
+                debug!("{:?}", msg);
                 match msg {
                     UdpSenderCommands::Stop => {
                         let packet = TcpControlPacket {
                             state: TcpControlState::Disconnect,
                         };
-
-                        dbg!(&packet);
 
                         Self::write_to_stream(stream, packet)?;
                         break;
@@ -157,16 +172,19 @@ pub trait TcpControlFlow {
                 match json.state {
                     TcpControlState::Endpoint(e, endpoint_payload) => {
                         // connect to receiver
-                        println!("Connecting to port {}, Payload: {:?}", &e, endpoint_payload);
+                        info!("Connecting to port {}, Payload: {:?}", &e, endpoint_payload);
                         let target = SocketAddr::from_str(e.as_str()).unwrap();
                         let _streamer = self.start_stream(streamer_config.clone(), target);
                     }
                     TcpControlState::Ping => todo!(),
                     TcpControlState::Disconnect => {
                         //self.stop_stream().unwrap();
+                        debug!("disconnecting");
                         break;
                     }
-                    TcpControlState::Error => todo!(),
+                    TcpControlState::Error => {
+                        todo!()
+                    },
                     TcpControlState::Connect => todo!(),
                 }
             }
@@ -196,7 +214,7 @@ pub trait TcpControlFlow {
         //for stream in listener.incoming() {
         let (mut stream, _) = listener.accept()?;
         //let device = device.clone();
-        println!("Connected");
+        info!("Connected");
 
         // Assign a random port for the new Stream
         //let mut stream = stream?;
@@ -300,7 +318,7 @@ mod tests {
         config::StreamerConfig,
     };
 
-    use super::{StartedStream, TcpControlFlow, UdpReceiverCommands, UdpSenderCommands};
+    use super::{StartedStream, TcpControlFlow, TcpErrors, UdpReceiverCommands, UdpSenderCommands};
 
     struct TcpCommunication {}
     impl TcpControlFlow for TcpCommunication {
@@ -308,7 +326,7 @@ mod tests {
             &mut self,
             _config: StreamerConfig,
             _target: SocketAddr,
-        ) -> anyhow::Result<()> {
+        ) -> Result<(), TcpErrors> {
             println!("Creating Debug Stream");
             assert!(true);
 

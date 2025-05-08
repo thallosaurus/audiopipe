@@ -9,9 +9,12 @@ bincode2 = "2.0.1"
 
 bytemuck = "1.22.0"
 clap = { version = "4.5.37", features = ["derive"] }
+clap-verbosity-flag = "3.0.2"
 cpal = "0.15.3"
 crossterm = "0.29.0"
+ctrlc = "3.4.6"
 hound = "3.5.1"
+log = "0.4.27"
 rand = "0.9.1"
 ratatui = "0.29.0"
 ringbuf = "0.4.8"
