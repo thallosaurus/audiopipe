@@ -124,12 +124,16 @@ impl Widget for &TuiApp {
                     Line::from(format!("Input Device Name: {}", self.device_name)),
                     Line::from(format!(
                         "Occupied UDP Buffer Size: {}",
-                        net_stats.pre_occupied_buffer
+                        0
+                        //net_stats.pre_occupied_buffer
                     )),
-                    Line::from(format!("Sent Samples: {}", net_stats.received.unwrap_or(0))),
+                    Line::from(format!("Sent Samples: {}", 0
+                    //net_stats.received.unwrap_or(0)
+                    )),
                     Line::from(format!(
                         "Requested Samples: {}",
-                        cpal_stats.requested.unwrap_or(0)
+                        0
+                        //cpal_stats.requested.unwrap_or(0)
                     )),
                 ]
             }
@@ -138,15 +142,18 @@ impl Widget for &TuiApp {
                     Line::from(format!("Output Device Name: {}", self.device_name)),
                     Line::from(format!(
                         "Occupied UDP Buffer Size: {}",
-                        net_stats.pre_occupied_buffer
+                        0
+                        //net_stats.pre_occupied_buffer
                     )),
                     Line::from(format!(
                         "Received Samples: {}",
-                        net_stats.received.unwrap_or(0)
+                        0
+                        //net_stats.received.unwrap_or(0)
                     )),
                     Line::from(format!(
                         "Requested Samples: {}",
-                        cpal_stats.requested.unwrap_or(0)
+                        0
+                        //cpal_stats.requested.unwrap_or(0)
                     )),
                 ]
             }

@@ -1,8 +1,8 @@
 use std::{
-    io::{BufRead, BufReader, BufWriter, Write},
-    net::{SocketAddr, TcpListener, TcpStream},
+    io::{self, BufRead, BufReader, BufWriter, Write},
+    net::{AddrParseError, SocketAddr, TcpListener, TcpStream},
     str::FromStr,
-    sync::mpsc::{Receiver, Sender},
+    sync::mpsc::{Receiver, SendError, Sender},
     time::Duration,
 };
 
@@ -10,7 +10,7 @@ use log::{debug, error, info, trace};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use crate::{Direction, config::StreamerConfig};
+use crate::{components::udp::UdpError, config::StreamerConfig, Direction};
 
 use super::{
     cpal::CpalStatus,
@@ -23,7 +23,73 @@ const MAX_TCP_PACKET_SIZE: usize = 65535;
 
 #[derive(Debug)]
 pub enum TcpErrors {
-    ConstructStreamError
+    ConstructStreamError,
+    ConnectError(io::Error),
+    SenderLoopError(io::Error),
+    ReceiverLoopError(io::Error),
+    StopStreamError,
+    UdpStatsSendError(SendError<UdpStatus>),
+    CpalStatsSendError(SendError<CpalStatus>),
+    StreamWriteError(io::Error),
+    StreamReadError(io::Error),
+    JsonEncodingError(serde_json::Error),
+    JsonDecodingError(serde_json::Error),
+    SocketAddrParseError(AddrParseError),
+}
+
+impl TcpErrors {
+    fn io_error_to_string(err: &io::Error) -> String {
+        err.to_string()
+    }
+
+    fn serde_error_to_string(err: &serde_json::Error) -> String {
+        err.to_string()
+    }
+}
+
+impl ToString for TcpErrors {
+    fn to_string(&self) -> String {
+        match self {
+            TcpErrors::ConstructStreamError => String::from("Error while constructing stream"),
+            TcpErrors::ConnectError(error) => Self::io_error_to_string(error),
+            TcpErrors::SenderLoopError(error) => Self::io_error_to_string(error),
+            TcpErrors::ReceiverLoopError(error) => Self::io_error_to_string(error),
+            TcpErrors::StopStreamError => todo!(),
+            TcpErrors::UdpStatsSendError(send_error) => send_error.to_string(),
+            TcpErrors::CpalStatsSendError(send_error) => send_error.to_string(),
+            TcpErrors::StreamWriteError(error) => Self::io_error_to_string(error),
+            TcpErrors::StreamReadError(error) => Self::io_error_to_string(error),
+            TcpErrors::JsonEncodingError(error) => Self::serde_error_to_string(error),
+            TcpErrors::JsonDecodingError(error) => Self::serde_error_to_string(error),
+            TcpErrors::SocketAddrParseError(error) => error.to_string(),
+        }
+    }
+}
+
+/// Shortcut for `Result<T, TcpErrors>``
+pub type TcpResult<T> = Result<T, TcpErrors>;
+
+/// This enum states the type of the tcp control packet.
+/// It gets used when the two instances exchange data
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub enum TcpControlState {
+    Connect,
+    Endpoint(String, EndpointPayload),
+    Ping,
+    Disconnect,
+    Error(String),
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct EndpointPayload {
+    channels: u16,
+    buffer_size: usize,
+}
+
+/// This is the data that gets sent between two instances
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TcpControlPacket {
+    state: TcpControlState,
 }
 
 /// Contains methods that implement the tcp control functionality
@@ -36,18 +102,17 @@ pub enum TcpErrors {
 /// the Port for the started stream.
 pub trait TcpControlFlow {
     /// Helper function to create a new TcpListener
-    fn create_new_tcp_listener(addr: SocketAddr) -> std::io::Result<TcpListener> {
-        TcpListener::bind(addr)
+    fn create_new_tcp_listener(addr: SocketAddr) -> TcpResult<TcpListener> {
+        TcpListener::bind(addr).map_err(|e| TcpErrors::ConnectError(e))
     }
 
     /// Helper function to create a new TcpStream
-    fn create_new_tcp_stream(addr: SocketAddr) -> std::io::Result<TcpStream> {
+    fn create_new_tcp_stream(addr: SocketAddr) -> TcpResult<TcpStream> {
         TcpStream::connect_timeout(&addr, Duration::from_secs(5))
+            .map_err(|e| TcpErrors::ConnectError(e))
     }
 
-    fn stop_serve() {
-
-    }
+    fn stop_serve() {}
 
     /// Serves the TCP Communication Stack
     fn tcp_serve(
@@ -56,7 +121,7 @@ pub trait TcpControlFlow {
         streamer_config: StreamerConfig,
         sender_commands: Option<Receiver<UdpSenderCommands>>,
         receiver_commands: Option<Receiver<UdpReceiverCommands>>,
-    ) -> std::io::Result<()> {
+    ) -> TcpResult<()> {
         let addr = streamer_config
             .clone()
             .program_args
@@ -67,63 +132,70 @@ pub trait TcpControlFlow {
         match streamer_config.direction {
             Direction::Sender => {
                 let mut stream = Self::create_new_tcp_stream(target)?;
+
                 info!("connecting to {}", target);
-                if let Err(e) = self.sender_loop(
+                let _sender_loop = self.sender_loop(
                     target,
                     &mut stream,
                     streamer_config,
                     sender_commands.expect("sender loop needs sender commands"),
-                ) {
-                    error!("TCP Sender Loop Error: {}", e);
-                };
-                self.stop_stream().unwrap();
+                )?;
+
+                //Stop stream if the sender loop quits
+                self.stop_stream()?;
             }
             Direction::Receiver => {
                 let listener = Self::create_new_tcp_listener(target)?;
                 info!("listening to {}", target);
-                if let Err(e) = self.receiver_loop(
+                self.receiver_loop(
                     listener,
                     streamer_config,
                     receiver_commands.expect("receiver loop needs receiver commands"),
-                ) {
-                    error!("TCP Receiver Loop Error: {}", e);
-                }
-                self.stop_stream().unwrap();
+                )?;
+                self.stop_stream()?;
             }
         }
         Ok(())
     }
 
     /// This method gets called to start the udp stream
-    fn start_stream(&mut self, config: StreamerConfig, target: SocketAddr) -> Result<(), TcpErrors>;
+    fn start_stream(&mut self, config: StreamerConfig, target: SocketAddr) -> TcpResult<()>;
 
     /// This method gets called to stop running udp stream
-    fn stop_stream(&self) -> anyhow::Result<()>;
+    fn stop_stream(&self) -> TcpResult<()>;
 
     /// Read from a given TcpStream with a BufReader
-    fn read_from_stream(stream: &mut TcpStream) -> std::io::Result<TcpControlPacket> {
+    fn read_from_stream(stream: &mut TcpStream) -> TcpResult<TcpControlPacket> {
         let mut reader = BufReader::new(stream);
 
         let mut buf = String::new();
-        reader.read_line(&mut buf)?;
+        reader
+            .read_line(&mut buf)
+            .map_err(|e| TcpErrors::StreamReadError(e))?;
 
-        let json = serde_json::from_str(&buf)?;
+        let json = serde_json::from_str(&buf).map_err(|e| TcpErrors::JsonDecodingError(e))?;
         debug!("< Read Packet: {:?}", json);
 
         Ok(json)
     }
 
     /// Writes to the specified TcpStream using a BufWriter
-    fn write_to_stream(stream: &TcpStream, packet: TcpControlPacket) -> std::io::Result<()> {
+    fn write_to_stream(stream: &TcpStream, packet: TcpControlPacket) -> TcpResult<()> {
         let mut buf_writer = BufWriter::new(stream);
 
         debug!("> Sending Packet: {:?}", packet);
-        
-        let json = serde_json::to_vec(&packet)?;
-        
-        buf_writer.write_all(&json)?;
-        buf_writer.write(b"\r\n")?;
-        buf_writer.flush()?;
+
+        let json = serde_json::to_vec(&packet).map_err(|e| TcpErrors::JsonEncodingError(e))?;
+
+        buf_writer
+            .write_all(&json)
+            .map_err(|e| TcpErrors::StreamWriteError(e))?;
+        buf_writer
+            .write(b"\r\n")
+            .map_err(|e| TcpErrors::StreamWriteError(e))?;
+        buf_writer
+            .flush()
+            .map_err(|e| TcpErrors::StreamWriteError(e))?;
         Ok(())
     }
 
@@ -134,9 +206,11 @@ pub trait TcpControlFlow {
         stream: &mut TcpStream,
         streamer_config: StreamerConfig,
         sender_commands: Receiver<UdpSenderCommands>,
-    ) -> std::io::Result<()> {
+    ) -> TcpResult<()> {
         //stream.set_read_timeout(Some(Duration::from_millis(500)))?;
-        stream.set_nonblocking(true)?;
+        stream
+            .set_nonblocking(true)
+            .map_err(|e| TcpErrors::SenderLoopError(e))?;
 
         // Start by connecting
         let packet = TcpControlPacket {
@@ -173,8 +247,8 @@ pub trait TcpControlFlow {
                     TcpControlState::Endpoint(e, endpoint_payload) => {
                         // connect to receiver
                         info!("Connecting to port {}, Payload: {:?}", &e, endpoint_payload);
-                        let target = SocketAddr::from_str(e.as_str()).unwrap();
-                        let _streamer = self.start_stream(streamer_config.clone(), target);
+                        let target = SocketAddr::from_str(e.as_str()).map_err(|e| TcpErrors::SocketAddrParseError(e))?;
+                        self.start_stream(streamer_config.clone(), target)?;
                     }
                     TcpControlState::Ping => todo!(),
                     TcpControlState::Disconnect => {
@@ -182,9 +256,10 @@ pub trait TcpControlFlow {
                         debug!("disconnecting");
                         break;
                     }
-                    TcpControlState::Error => {
+                    TcpControlState::Error(e) => {
+                        //error!("{}", )
                         todo!()
-                    },
+                    }
                     TcpControlState::Connect => todo!(),
                 }
             }
@@ -193,7 +268,7 @@ pub trait TcpControlFlow {
         Ok(())
     }
 
-    fn send_ping(stream: &TcpStream) -> std::io::Result<()> {
+    fn send_ping(stream: &TcpStream) -> TcpResult<()> {
         let packet = TcpControlPacket {
             state: TcpControlState::Ping,
         };
@@ -210,21 +285,28 @@ pub trait TcpControlFlow {
         streamer_config: StreamerConfig,
         receiver_commands: Receiver<UdpReceiverCommands>,
         //device: Arc<Mutex<Device>>,
-    ) -> std::io::Result<()> {
+    ) -> TcpResult<()> {
         //for stream in listener.incoming() {
-        let (mut stream, _) = listener.accept()?;
+        let (mut stream, _) = listener
+            .accept()
+            .map_err(|e| TcpErrors::ReceiverLoopError(e))?;
         //let device = device.clone();
         info!("Connected");
 
         // Assign a random port for the new Stream
         //let mut stream = stream?;
-        let mut own_ip = stream.local_addr()?;
+        let mut own_ip = stream
+            .local_addr()
+            .unwrap();
+
         let mut rng = rand::rng();
         let port = rng.random_range(30000..40000);
         own_ip.set_port(port);
 
         //stream.set_read_timeout(Some(Duration::from_millis(500)))?;
-        stream.set_nonblocking(true)?;
+        stream
+            .set_nonblocking(true)
+            .map_err(|e| TcpErrors::ReceiverLoopError(e))?;
 
         let mut framesize_buffer = [0u8; 65535];
 
@@ -236,7 +318,7 @@ pub trait TcpControlFlow {
                             state: TcpControlState::Disconnect,
                         };
 
-                        dbg!(&packet);
+                        debug!("{:?}", packet);
 
                         Self::write_to_stream(&stream, packet)?;
                         break;
@@ -247,6 +329,7 @@ pub trait TcpControlFlow {
             if let Ok(size) = stream.peek(&mut framesize_buffer) {
                 let connection_packet = Self::read_from_stream(&mut stream)?;
                 match connection_packet.state {
+                    // If Receiver got a connect request
                     TcpControlState::Connect => {
                         let _streamer = self.start_stream(streamer_config.clone(), own_ip).unwrap();
 
@@ -269,36 +352,16 @@ pub trait TcpControlFlow {
                     TcpControlState::Disconnect => {
                         break;
                     }
-                    TcpControlState::Error => todo!(),
+                    TcpControlState::Error(e) => {
+                        error!("{}", e);
+                        break;
+                    }
                 }
             }
         }
 
         Ok(())
     }
-}
-
-/// This enum states the type of the tcp control packet.
-/// It gets used when the two instances exchange data
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub enum TcpControlState {
-    Connect,
-    Endpoint(String, EndpointPayload),
-    Ping,
-    Disconnect,
-    Error,
-}
-
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-struct EndpointPayload {
-    channels: u16,
-    buffer_size: usize,
-}
-
-/// This is the data that gets sent between two instances
-#[derive(Serialize, Deserialize, Debug)]
-pub struct TcpControlPacket {
-    state: TcpControlState,
 }
 
 #[cfg(test)]
@@ -329,13 +392,10 @@ mod tests {
         ) -> Result<(), TcpErrors> {
             println!("Creating Debug Stream");
             assert!(true);
-
-            let (cpal_msg_tx, cpal_msg_rx) = channel::<CpalStatus>();
-            let (udp_msg_tx, udp_msg_rx) = channel::<UdpStatus>();
             Ok(())
         }
 
-        fn stop_stream(&self) -> anyhow::Result<()> {
+        fn stop_stream(&self) -> Result<(), TcpErrors> {
             assert!(true);
             Ok(())
         }

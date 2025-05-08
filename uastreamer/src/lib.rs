@@ -14,7 +14,7 @@ use std::{
 use bytemuck::Pod;
 
 use components::{
-    control::{StartedStream, TcpControlFlow, TcpErrors},
+    control::{StartedStream, TcpControlFlow, TcpErrors, TcpResult},
     cpal::{CpalAudioFlow, CpalStats, CpalStatus},
     udp::{NetworkUDPStats, UdpStatus, UdpStreamFlow},
 };
@@ -178,10 +178,7 @@ pub fn create_wav_writer(
         let fname = format!("dump/{}_{}.wav", timestamp.as_secs(), filename);
         info!("Initializing Debug Wav Writer at {}", fname);
         create_dir_all("dump/")?;
-        writer = Some(hound::WavWriter::create(
-            fname,
-            spec,
-        )?);
+        writer = Some(hound::WavWriter::create(fname, spec)?);
     }
 
     Ok(writer)
@@ -205,7 +202,7 @@ pub struct App<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     udp_stats_sender: Sender<NetworkUDPStats>,
     udp_command_sender: Option<Sender<UdpStatus>>,
     cpal_command_sender: Option<Sender<CpalStatus>>,
-    
+
     _config: Arc<Mutex<StreamerConfig>>,
     pub pool: ThreadPool,
     //thread_channels: Option<(Sender<bool>, Sender<bool>)>,
@@ -287,11 +284,11 @@ where
         &mut self,
         config: StreamerConfig,
         target: SocketAddr,
-    ) -> Result<(), TcpErrors> {
+    ) -> TcpResult<()> {
         // Sync Channel for the buffer
         // If sent, the udp thread is instructed to empty the contents of the buffer and send them
         let (chan_sync_tx, chan_sync_rx) = channel::<bool>();
-        
+
         let (cpal_channel_tx, cpal_channel_rx) = channel::<CpalStatus>();
         let (udp_msg_tx, udp_msg_rx) = channel::<UdpStatus>();
 
@@ -334,12 +331,12 @@ where
                                 match msg {
                                     CpalStatus::DidEnd => {
                                         println!("Stopping CPAL Stream");
-                                        break
-                                    },
+                                        break;
+                                    }
                                 }
                             }
                         }
-                    },
+                    }
                     Err(err) => error!("{}", err),
                 }
             });
@@ -372,18 +369,17 @@ where
         Ok(())
     }
 
-    fn stop_stream(&self) -> anyhow::Result<()> {
-        /*if let Some((ch1, ch2)) = &self.thread_channels {
-            ch1.send(true)?;
-            ch2.send(true)?;
-        }*/
-
+    fn stop_stream(&self) -> TcpResult<()> {
         if let Some(ch) = &self.udp_command_sender {
-            ch.send(UdpStatus::DidEnd).unwrap();
+            ch.send(UdpStatus::DidEnd).map_err(|e| {
+                TcpErrors::UdpStatsSendError(e)
+            })?;
         }
 
         if let Some(ch) = &self.cpal_command_sender {
-            ch.send(CpalStatus::DidEnd).unwrap();
+            ch.send(CpalStatus::DidEnd).map_err(|e| {
+                TcpErrors::CpalStatsSendError(e)
+            })?;
         }
 
         Ok(())
