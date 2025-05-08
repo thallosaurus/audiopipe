@@ -98,6 +98,7 @@ impl StreamerConfig {
                 network_host,
                 audio_host,
                 verbose: Verbosity::new(0, 0),
+                //test: todo!(),
             },
         })
     }

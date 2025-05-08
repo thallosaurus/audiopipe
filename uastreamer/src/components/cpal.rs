@@ -21,6 +21,10 @@ use crate::{
     write_debug,
 };
 
+pub enum CpalError {
+    
+}
+
 pub enum CpalStatus {
     DidEnd,
 }
@@ -56,7 +60,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                 let mut writer = create_wav_writer(
                     "sender_dump".to_owned(),
                     config.selected_channels.len() as u16,
-                    48000,
+                    cpal_config.sample_rate.0,
                 )?;
 
                 device.build_input_stream(
@@ -97,7 +101,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                 let mut writer = create_wav_writer(
                     "receiver_dump".to_owned(),
                     config.selected_channels.len() as u16,
-                    48000,
+                    cpal_config.sample_rate.0,
                 )?;
 
                 device.build_output_stream(
