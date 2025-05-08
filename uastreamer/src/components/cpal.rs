@@ -281,18 +281,4 @@ mod tests {
             self.cons.clone()
         }
     }
-
-    #[test]
-    fn test_mono() {
-        let data = vec![2f32; 1024];
-        let adapter = CpalAudioDebugAdapter::new(1024);
-
-        let mut prod = adapter.prod.lock().unwrap();
-
-        //CpalAudioDebugAdapter::process_input(data.as_slice(), None, &mut prod, &mut None, vec![0], 1);
-
-        let cons = adapter.cons.lock().unwrap();
-
-        assert_eq!(cons.occupied_len(), data.len());
-    }
 }

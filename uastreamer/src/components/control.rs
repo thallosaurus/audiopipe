@@ -2,11 +2,11 @@ use std::{
     io::{BufRead, BufReader, BufWriter, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     str::FromStr,
-    sync::mpsc::{Receiver, Sender},
+    sync::mpsc::Receiver,
     time::Duration,
 };
 
-use rand::{Rng, random};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{Direction, config::StreamerConfig};
@@ -119,7 +119,8 @@ pub trait TcpControlFlow {
         streamer_config: StreamerConfig,
         sender_commands: Receiver<UdpSenderCommands>,
     ) -> std::io::Result<()> {
-        stream.set_read_timeout(Some(Duration::from_millis(500)))?;
+        //stream.set_read_timeout(Some(Duration::from_millis(500)))?;
+        stream.set_nonblocking(true)?;
 
         // Start by connecting
         let packet = TcpControlPacket {
@@ -131,8 +132,8 @@ pub trait TcpControlFlow {
 
         let mut framesize_buffer = [0u8; 65535];
 
-        // Read the answer
         loop {
+            // read command channel first
             if let Ok(msg) = sender_commands.try_recv() {
                 match msg {
                     UdpSenderCommands::Stop => {
@@ -148,6 +149,7 @@ pub trait TcpControlFlow {
                 }
             }
 
+            // then gather the buffer
             if let Ok(size) = stream.peek(&mut framesize_buffer) {
                 let json = Self::read_from_stream(stream)?;
 
@@ -159,7 +161,9 @@ pub trait TcpControlFlow {
                         let _streamer = self.start_stream(streamer_config.clone(), target);
                     }
                     TcpControlState::Ping => todo!(),
-                    TcpControlState::Disconnect => todo!(),
+                    TcpControlState::Disconnect => {
+                        break;
+                    },
                     TcpControlState::Error => todo!(),
                     TcpControlState::Connect => todo!(),
                 }
@@ -199,7 +203,9 @@ pub trait TcpControlFlow {
             let port = rng.random_range(30000..40000);
             own_ip.set_port(port);
 
-            stream.set_read_timeout(Some(Duration::from_millis(500)))?;
+            //stream.set_read_timeout(Some(Duration::from_millis(500)))?;
+            stream.set_nonblocking(true)?;
+
             let mut framesize_buffer = [0u8; 65535];
 
             loop {
@@ -298,6 +304,7 @@ mod tests {
             _target: SocketAddr,
         ) -> anyhow::Result<()> {
             println!("Creating Debug Stream");
+            assert!(true);
             Ok(())
         }
 

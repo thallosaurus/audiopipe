@@ -21,14 +21,12 @@ use crate::Direction;
 pub enum UdpStatus {
     DidEnd,
 }
-const MAX_UDP_PACKET_LENGTH: u16 = 1200;
 
-/// Header Size: 32bytes
-/// Max UDP Packet: 1200bytes
-const MAX_UDP_DATA_LENGTH: u16 = MAX_UDP_PACKET_LENGTH - 32;
+const MAX_UDP_PACKET_LENGTH: usize = 65535;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 struct UdpAudioPacket {
+    sequence: u64,
     data: Vec<u8>,
 }
 
@@ -104,6 +102,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         udp_msg: Receiver<UdpStatus>,
         chan_sync: Receiver<bool>,
     ) {
+        let mut seq = 0;
         loop {
             if let Ok(msg) = udp_msg.try_recv() {
                 match msg {
@@ -118,10 +117,9 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
             // Only send the network package if the network buffer is full or we got the signal
             if chan_sync.try_recv().unwrap_or(false) || buffer_consumer.is_full() {
-                let mut seq = 0;
                 while !buffer_consumer.is_empty() {
                     let mut data_buf: Box<[T]> =
-                        vec![T::default(); 65535].into_boxed_slice();
+                        vec![T::default(); MAX_UDP_PACKET_LENGTH].into_boxed_slice();
                     let consumed = buffer_consumer.pop_slice(&mut data_buf);
                     let udp_data: &[u8] = bytemuck::cast_slice(&data_buf[..consumed]);
 
@@ -130,6 +128,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                         //total_len: consumed * size_of::<u8>(),
                         //data_len: udp_data.len(),
                         data: udp_data.to_vec(),
+                        sequence: seq,
                     };
 
                     let set = bincode2::serialize(&packet).unwrap();
@@ -137,8 +136,6 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                     let _sent_s = socket.send(&set).unwrap();
                     seq += 1;
                 }
-            } else {
-                //println!("Buffer not full");
             }
             //std::thread::sleep(Duration::from_millis(50));
         }
@@ -172,9 +169,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             }
 
             // create the temporary network buffer needed to capture the network samples
-            let mut temp_network_buffer = vec![0u8; 65535].into_boxed_slice();
-
-            //let mut temp_network_buffer: Box<[u8]> = vec![].into_boxed_slice();
+            let mut temp_network_buffer = vec![0u8; MAX_UDP_PACKET_LENGTH].into_boxed_slice();
 
             // Receive from the Network
             match socket.recv(&mut temp_network_buffer) {
@@ -321,7 +316,7 @@ mod tests {
             .unwrap();
         });
 
-        tx1.send(true).unwrap();
+        udp_msg_tx.send(UdpStatus::DidEnd).unwrap();
 
         t.join().unwrap();
     }
