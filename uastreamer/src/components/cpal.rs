@@ -158,6 +158,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
         //println!("Buffer Size inside cpal: {}, CPAL Len: {}", output.capacity(), data.len());
 
+        let mut dropped = 0;
         // Iterate through the input buffer and save data
         for s in splitter {
             if s.on_selected_channel {
@@ -165,17 +166,14 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                     if let Ok(()) = output.try_push(*s.sample) {
                         write_debug(writer, *s.sample);
                     } else {
-                        println!(
-                            "OVERFLOW - Data Length: {}, Occ: {}",
-                            data.len(),
-                            output.occupied_len()
-                        );
+                        dropped += 1;
+                        udp_urge_channel.send(true).unwrap();
 
                         // Urge the UDP thread to send the buffer immediately
                         //udp_urge_channel.send(true).unwrap();
 
                         // drop remaining samples
-                        break;
+                        //break;
                         //return consumed
                     }
                     //output.try_push(*s.sample).unwrap();
@@ -185,6 +183,12 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             }
 
             consumed += 1;
+        }
+        if dropped > 0 {
+            println!(
+                "OVERFLOW - Dropped {} Samples",
+                dropped
+            );
         }
         udp_urge_channel.send(true).unwrap();
 

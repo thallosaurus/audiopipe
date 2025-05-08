@@ -130,7 +130,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                 
                 // find out if this might be the epicenter of the glitches
                 // 08.05.2025: no, but removing it makes bytemuck on receiver side angry
-                //while !buffer_consumer.is_empty() {
+                while !buffer_consumer.is_empty() {
                     let mut data_buf: Box<[T]> =
                         vec![T::default(); MAX_UDP_PACKET_LENGTH].into_boxed_slice();
                     let consumed = buffer_consumer.pop_slice(&mut data_buf);
@@ -148,7 +148,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
                     let _sent_s = socket.send(&set).unwrap();
                     seq += 1;
-                //}
+                }
             }
         }
     }
@@ -190,15 +190,22 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                         bincode2::deserialize_from(&temp_network_buffer[..received]).unwrap();
 
                     // Convert the buffered network samples to the specified sample format
-                    let converted_samples: &[T] = bytemuck::cast_slice(&packet.data);
+                    let converted_samples: Result<&[T], bytemuck::PodCastError> = bytemuck::try_cast_slice(&packet.data);
+                    match converted_samples {
+                        Ok(c_samples) => {
+                            // Transfer Samples bytewise
+                            for &sample in c_samples {
+                                // TODO implement fell-behind logic here
+                                let _ = prod.try_push(sample);
+                            }
+                        },
+                        Err(err) => {
+                            eprintln!("{err}");
+                        },
+                    }
 
                     //let pre_occupied_buffer = prod.occupied_len();
 
-                    // Transfer Samples bytewise
-                    for &sample in converted_samples {
-                        // TODO implement fell-behind logic here
-                        let _ = prod.try_push(sample);
-                    }
 
                     //let post_occupied_buffer = prod.occupied_len();
 
