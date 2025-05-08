@@ -275,10 +275,10 @@ where
     T: cpal::SizedSample + Send + Pod + Default + Debug + 'static,
 {
     fn start_stream(&mut self, config: StreamerConfig, target: SocketAddr) -> anyhow::Result<()> {
+        // Sync Channel for the buffer
+        // If sent, the udp thread is instructed to empty the contents of the buffer and send them
         let (chan_sync_tx, chan_sync_rx) = channel::<bool>();
         let (cpal_channel_tx, cpal_channel_rx) = channel::<bool>();
-
-
 
         //start video capture and udp sender here
         let dir = config.direction;
@@ -290,7 +290,6 @@ where
             let streamer_config = config.clone();
 
             self.pool.execute(move || {
-                // TODO maybe i should initialize the device here and don't store it on the streamer config
                 let (d, stream_config) = get_cpal_config(
                     config.direction,
                     config.program_args.audio_host,
@@ -351,8 +350,6 @@ where
                 .unwrap();
             });
         }
-
-        //self.thread_channels = Some((cpal_channel_tx, chan_sync_tx));
         Ok(())
     }
 
