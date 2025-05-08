@@ -172,19 +172,19 @@ pub fn create_wav_writer(
 
     let timestamp = now.duration_since(SystemTime::UNIX_EPOCH)?;
 
+    let mut writer: Option<DebugWavWriter> = None;
     #[cfg(debug_assertions)]
-    create_dir_all("dump/")?;
+    {
+        let fname = format!("dump/{}_{}.wav", timestamp.as_secs(), filename);
+        info!("Initializing Debug Wav Writer at {}", fname);
+        create_dir_all("dump/")?;
+        writer = Some(hound::WavWriter::create(
+            fname,
+            spec,
+        )?);
+    }
 
-    #[cfg(debug_assertions)]
-    let writer = Ok(Some(hound::WavWriter::create(
-        format!("dump/{}_{}.wav", timestamp.as_secs(), filename),
-        spec,
-    )?));
-
-    #[cfg(not(debug_assertions))]
-    let writer = Ok(None);
-
-    writer
+    Ok(writer)
 }
 
 pub fn write_debug<T: cpal::SizedSample + Send + Pod + Default + 'static>(
