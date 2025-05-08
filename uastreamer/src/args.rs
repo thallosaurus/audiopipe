@@ -1,4 +1,5 @@
 use clap::Parser;
+use clap_verbosity_flag::{InfoLevel, Verbosity};
 
 use crate::{PKG_NAME, VERSION};
 
@@ -28,6 +29,10 @@ pub struct NewCliArgs {
     /// Selects the tracks to which the app will push data to
     #[clap(short = 'c')]
     pub output_channels: Vec<usize>,
+
+    /// Sets Verbosity
+    #[command(flatten)]
+    pub verbose: Verbosity
 }
 
 impl Default for NewCliArgs {
@@ -39,6 +44,7 @@ impl Default for NewCliArgs {
             port: Default::default(),
             output_channels: Default::default(),
             network_host: Default::default(),
+            verbose: Verbosity::default(),
         }
     }
 }

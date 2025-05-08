@@ -14,7 +14,7 @@ use std::{
 use bytemuck::Pod;
 
 use components::{
-    control::{StartedStream, TcpControlFlow},
+    control::{StartedStream, TcpControlFlow, TcpErrors, TcpResult},
     cpal::{CpalAudioFlow, CpalStats, CpalStatus},
     udp::{NetworkUDPStats, UdpStatus, UdpStreamFlow},
 };
@@ -22,11 +22,13 @@ use cpal::{traits::*, *};
 use hound::WavWriter;
 
 use config::{StreamerConfig, get_cpal_config};
+use log::{debug, error, info, set_logger};
 use ringbuf::{
     HeapCons, HeapProd,
     traits::{Observer, Split},
 };
 use threadpool::ThreadPool;
+use ualog::SimpleLogger;
 
 /// Default Port if none is specified
 pub const DEFAULT_PORT: u16 = 42069;
@@ -57,6 +59,8 @@ pub mod config;
 
 /// Holds all flows this app offers
 pub mod components;
+
+pub mod ualog;
 
 /// Defines the behavior of the stream
 ///
@@ -168,19 +172,16 @@ pub fn create_wav_writer(
 
     let timestamp = now.duration_since(SystemTime::UNIX_EPOCH)?;
 
+    let mut writer: Option<DebugWavWriter> = None;
     #[cfg(debug_assertions)]
-    create_dir_all("dump/")?;
+    {
+        let fname = format!("dump/{}_{}.wav", timestamp.as_secs(), filename);
+        info!("Initializing Debug Wav Writer at {}", fname);
+        create_dir_all("dump/")?;
+        writer = Some(hound::WavWriter::create(fname, spec)?);
+    }
 
-    #[cfg(debug_assertions)]
-    let writer = Ok(Some(hound::WavWriter::create(
-        format!("dump/{}_{}.wav", timestamp.as_secs(), filename),
-        spec,
-    )?));
-
-    #[cfg(not(debug_assertions))]
-    let writer = Ok(None);
-
-    writer
+    Ok(writer)
 }
 
 pub fn write_debug<T: cpal::SizedSample + Send + Pod + Default + 'static>(
@@ -199,6 +200,9 @@ pub struct App<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     audio_buffer_cons: Arc<Mutex<HeapCons<T>>>,
     cpal_stats_sender: Sender<CpalStats>,
     udp_stats_sender: Sender<NetworkUDPStats>,
+    udp_command_sender: Option<Sender<UdpStatus>>,
+    cpal_command_sender: Option<Sender<CpalStatus>>,
+
     _config: Arc<Mutex<StreamerConfig>>,
     pub pool: ThreadPool,
     //thread_channels: Option<(Sender<bool>, Sender<bool>)>,
@@ -209,10 +213,10 @@ where
     T: cpal::SizedSample + Send + Pod + Default + Debug + 'static,
 {
     pub fn new(config: StreamerConfig) -> (Self, AppDebug) {
-        dbg!(&config);
+        debug!("Using Config: {:?}", &config);
         let audio_buffer =
             ringbuf::HeapRb::<T>::new(config.buffer_size * config.selected_channels.len());
-        println!("{}", audio_buffer.capacity());
+        info!("Audio Buffer Size: {}", audio_buffer.capacity());
 
         let (audio_buffer_prod, audio_buffer_cons) = audio_buffer.split();
 
@@ -227,6 +231,8 @@ where
                 udp_stats_sender,
                 _config: Arc::new(Mutex::new(config)),
                 pool: ThreadPool::new(5),
+                udp_command_sender: None,
+                cpal_command_sender: None,
                 //thread_channels: None,
             },
             AppDebug {
@@ -278,18 +284,21 @@ where
         &mut self,
         config: StreamerConfig,
         target: SocketAddr,
-    ) -> anyhow::Result<StartedStream> {
+    ) -> TcpResult<()> {
         // Sync Channel for the buffer
         // If sent, the udp thread is instructed to empty the contents of the buffer and send them
         let (chan_sync_tx, chan_sync_rx) = channel::<bool>();
-        
+
         let (cpal_channel_tx, cpal_channel_rx) = channel::<CpalStatus>();
         let (udp_msg_tx, udp_msg_rx) = channel::<UdpStatus>();
+
+        self.udp_command_sender = Some(udp_msg_tx);
+        self.cpal_command_sender = Some(cpal_channel_tx);
 
         //start video capture and udp sender here
         let dir = config.direction;
         {
-            dbg!("Constructing CPAL Stream");
+            info!("Constructing CPAL Stream");
             let stats = self.get_cpal_stats_sender();
             let prod = self.get_producer();
             let cons = self.get_consumer();
@@ -304,7 +313,7 @@ where
                 .unwrap();
 
                 //let device = device.lock().unwrap();
-                let _stream = Self::construct_stream(
+                match Self::construct_stream(
                     dir,
                     &d,
                     stream_config,
@@ -313,30 +322,32 @@ where
                     prod,
                     cons,
                     chan_sync_tx,
-                )
-                .unwrap();
-
-                _stream.play().unwrap();
-
-                loop {
-                    //block
-                    if let Ok(msg) = cpal_channel_rx.try_recv() {
-                        match msg {
-                            CpalStatus::DidEnd => {
-                                break
-                            },
+                ) {
+                    Ok(stream) => {
+                        stream.play().unwrap();
+                        loop {
+                            //block
+                            if let Ok(msg) = cpal_channel_rx.try_recv() {
+                                match msg {
+                                    CpalStatus::DidEnd => {
+                                        println!("Stopping CPAL Stream");
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
+                    Err(err) => error!("{}", err),
                 }
             });
         }
 
         {
-            dbg!("Constructing UDP Stream");
+            info!("Constructing UDP Stream");
             let prod = self.udp_get_producer();
             let cons = self.udp_get_consumer();
             let stats = self.get_udp_stats_sender();
-            dbg!(&target);
+            debug!("{:?}", target);
 
             let t = target.clone();
             //t.set_ip(IpAddr::from_str("0.0.0.0").unwrap());
@@ -355,14 +366,21 @@ where
                 .unwrap();
             });
         }
-        Ok((udp_msg_tx,cpal_channel_tx))
+        Ok(())
     }
 
-    fn stop_stream(&self) -> anyhow::Result<()> {
-        /*if let Some((ch1, ch2)) = &self.thread_channels {
-            ch1.send(true)?;
-            ch2.send(true)?;
-        }*/
+    fn stop_stream(&self) -> TcpResult<()> {
+        if let Some(ch) = &self.udp_command_sender {
+            ch.send(UdpStatus::DidEnd).map_err(|e| {
+                TcpErrors::UdpStatsSendError(e)
+            })?;
+        }
+
+        if let Some(ch) = &self.cpal_command_sender {
+            ch.send(CpalStatus::DidEnd).map_err(|e| {
+                TcpErrors::CpalStatsSendError(e)
+            })?;
+        }
 
         Ok(())
     }

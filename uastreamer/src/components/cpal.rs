@@ -3,6 +3,7 @@ use cpal::{
     ChannelCount, InputCallbackInfo, OutputCallbackInfo, Sample, Stream, StreamConfig,
     traits::DeviceTrait,
 };
+use log::warn;
 use ringbuf::{
     HeapCons, HeapProd,
     traits::{Observer, Producer},
@@ -144,7 +145,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         writer: &mut Option<DebugWavWriter>,
         selected_channels: Vec<usize>,
         channel_count: u16, //stats: Arc<Sender<CpalStats>>,
-        cpal_channel_tx: Sender<bool>,
+        udp_urge_channel: Sender<bool>,
     ) -> usize {
         let mut consumed = 0;
 
@@ -158,6 +159,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
         //println!("Buffer Size inside cpal: {}, CPAL Len: {}", output.capacity(), data.len());
 
+        let mut dropped = 0;
         // Iterate through the input buffer and save data
         for s in splitter {
             if s.on_selected_channel {
@@ -165,14 +167,14 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                     if let Ok(()) = output.try_push(*s.sample) {
                         write_debug(writer, *s.sample);
                     } else {
-                        println!(
-                            "OVERFLOW - Data Length: {}, Occ: {}",
-                            data.len(),
-                            output.occupied_len()
-                        );
+                        dropped += 1;
+                        udp_urge_channel.send(true).unwrap();
 
                         // Urge the UDP thread to send the buffer immediately
-                        cpal_channel_tx.send(true).unwrap();
+                        //udp_urge_channel.send(true).unwrap();
+
+                        // drop remaining samples
+                        //break;
                         //return consumed
                     }
                     //output.try_push(*s.sample).unwrap();
@@ -183,7 +185,13 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
             consumed += 1;
         }
-        cpal_channel_tx.send(true).unwrap();
+        if dropped > 0 {
+            warn!(
+                "OVERFLOW - Dropped {} Samples",
+                dropped
+            );
+        }
+        udp_urge_channel.send(true).unwrap();
 
         consumed
     }
@@ -218,12 +226,6 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                 }
             }
 
-            // If the program runs in debug mode, the debug wav writer becomes available
-            /*#[cfg(debug_assertions)]
-            if let Some(writer) = writer {
-                writer.write_sample(*sample).unwrap();
-            }*/
-
             consumed += 1;
         }
 
@@ -245,7 +247,7 @@ mod tests {
 
     use ringbuf::{
         HeapCons, HeapProd, HeapRb,
-        traits::{Observer, Split},
+        traits::Split,
     };
 
     use super::{CpalAudioFlow, CpalStats};

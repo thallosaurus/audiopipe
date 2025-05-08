@@ -1,4 +1,5 @@
 use clap::Parser;
+use clap_verbosity_flag::{Verbosity, VerbosityFilter};
 use cpal::{
     Device, StreamConfig,
     traits::{DeviceTrait, HostTrait},
@@ -96,6 +97,7 @@ impl StreamerConfig {
                 output_channels: selected_channels.clone(),
                 network_host,
                 audio_host,
+                verbose: Verbosity::new(0, 0),
             },
         })
     }

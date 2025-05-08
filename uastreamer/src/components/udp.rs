@@ -1,15 +1,16 @@
 use std::{
     fmt::Debug,
-    io::ErrorKind,
+    io::{self, ErrorKind},
     net::{SocketAddr, UdpSocket},
     sync::{
         Arc, Mutex,
         mpsc::{Receiver, Sender},
     },
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
-use bytemuck::Pod;
+use bytemuck::{Pod, PodCastError};
+use log::{debug, error, info, trace};
 use ringbuf::{
     HeapCons, HeapProd,
     traits::{Consumer, Observer, Producer},
@@ -17,6 +18,19 @@ use ringbuf::{
 use serde::{Deserialize, Serialize};
 
 use crate::Direction;
+
+#[derive(Debug)]
+pub enum UdpError {
+    BindFailed(io::Error),
+    ConnectError(io::Error),
+    CastingError(PodCastError),
+    UdpReceiveError(io::Error),
+    SerializeError(Box<bincode2::ErrorKind>),
+    DeserializeError(Box<bincode2::ErrorKind>),
+    CouldNotDeactivateTimeout(io::Error),
+}
+
+pub type UdpResult<T> = Result<T, UdpError>;
 
 pub enum UdpStatus {
     DidEnd,
@@ -37,16 +51,17 @@ const MAX_UDP_PACKET_LENGTH: usize = 65535;
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 struct UdpAudioPacket {
     sequence: u64,
+    timestamp: SystemTime,
     data: Vec<u8>,
 }
 
 /// Stats which get sent after each UDP Event
 #[derive(Default)]
 pub struct NetworkUDPStats {
-    pub sent: Option<usize>,
-    pub received: Option<usize>,
-    pub pre_occupied_buffer: usize,
-    pub post_occupied_buffer: usize,
+    //pub sent: Option<usize>,
+    //pub received: Option<usize>,
+    pub consumed: usize,
+    pub dropped: usize,
 }
 
 pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
@@ -58,15 +73,17 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         stats: Option<Sender<NetworkUDPStats>>,
         udp_msg_rx: Receiver<UdpStatus>,
         chan_sync: Receiver<bool>,
-    ) -> std::io::Result<()> {
+    ) -> UdpResult<()> {
         //let (udp_msg_tx, udp_msg_rx) = channel::<UdpStatus>();
 
         match direction {
             Direction::Sender => {
-                let socket = UdpSocket::bind("0.0.0.0:0")?;
+                let socket = UdpSocket::bind("0.0.0.0:0").map_err(|e| UdpError::BindFailed(e))?;
                 //let f = format!("{}:{}", target, config.port);
-                println!("[FLOW] Connecting UDP to {}", target);
-                socket.connect(target)?;
+                info!("Connecting UDP to {}", target);
+                socket
+                    .connect(target)
+                    .map_err(|e| UdpError::ConnectError(e))?;
 
                 Self::udp_sender_loop(
                     socket,
@@ -75,16 +92,16 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                     //udp_channel,
                     udp_msg_rx,
                     chan_sync,
-                );
+                )?;
             }
             Direction::Receiver => {
                 // The receiver listens on local_port:ip.
-                let socket = UdpSocket::bind(target)?;
-                println!("[FLOW] Receiving UDP on {}", target);
+                let socket = UdpSocket::bind(target).map_err(|e| UdpError::BindFailed(e))?;
+                info!("Receiving UDP on {}", target);
 
                 socket
                     .set_read_timeout(Some(Duration::from_secs(3)))
-                    .unwrap();
+                    .map_err(|e| UdpError::CouldNotDeactivateTimeout(e))?;
 
                 Self::udp_receiver_loop(
                     socket,
@@ -92,7 +109,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                     stats,
                     //udp_channel,
                     udp_msg_rx,
-                );
+                )?;
             }
         }
 
@@ -111,13 +128,16 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         stats: Option<Sender<NetworkUDPStats>>,
         udp_msg: Receiver<UdpStatus>,
         chan_sync: Receiver<bool>,
-    ) {
+    ) -> UdpResult<()> {
         let mut seq = 0;
         loop {
+            let mut consumed = 0;
+            let dropped = 0;
             if let Ok(msg) = udp_msg.try_recv() {
                 match msg {
+                    // Graceful Shutdown
                     UdpStatus::DidEnd => {
-                        println!("Exiting UDP Sender Loop");
+                        info!("Exiting UDP Sender Loop");
                         break;
                     }
                 }
@@ -127,14 +147,15 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
             // Only send the network package if the network buffer is full or we got the signal
             if chan_sync.try_recv().unwrap_or(false) || buffer_consumer.is_full() {
-                
                 // find out if this might be the epicenter of the glitches
-                // 08.05.2025: no, but removing it makes bytemuck on receiver side angry
+                // 08.05.2025: no, but removing it makes bytemuck on receiver side angry somehow - TODO
                 while !buffer_consumer.is_empty() {
                     let mut data_buf: Box<[T]> =
                         vec![T::default(); MAX_UDP_PACKET_LENGTH].into_boxed_slice();
-                    let consumed = buffer_consumer.pop_slice(&mut data_buf);
-                    let udp_data: &[u8] = bytemuck::cast_slice(&data_buf[..consumed]);
+                    consumed += buffer_consumer.pop_slice(&mut data_buf);
+                    trace!("Consumed {} bytes", consumed);
+                    let udp_data: &[u8] = bytemuck::try_cast_slice(&data_buf[..consumed])
+                        .map_err(|e| UdpError::CastingError(e))?;
 
                     let packet = UdpAudioPacket {
                         //sequence: seq,
@@ -142,15 +163,25 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                         //data_len: udp_data.len(),
                         data: udp_data.to_vec(),
                         sequence: seq,
+                        timestamp: SystemTime::now(),
                     };
+                    trace!("> UDP Packet (Seq: #{}: {:?}", seq, packet);
 
-                    let set = bincode2::serialize(&packet).unwrap();
+                    let set =
+                        bincode2::serialize(&packet).map_err(|e| UdpError::SerializeError(e))?;
+                    trace!("> UDP Packet Serialized: {:?}", set);
 
                     let _sent_s = socket.send(&set).unwrap();
                     seq += 1;
                 }
             }
+
+            // Send Statistics about the current operation to the stats channel
+            /*if let Some(ref s) = stats {
+                s.send(NetworkUDPStats { consumed, dropped }).unwrap();
+            }*/
         }
+        Ok(())
     }
 
     /// Entry Point for the UDP Receiver Loop
@@ -161,69 +192,74 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         stats: Option<Sender<NetworkUDPStats>>,
         //udp_channel: Receiver<bool>,
         udp_msg: Receiver<UdpStatus>,
-    ) {
+    ) -> UdpResult<()> {
         //let buffer_producer = self.udp_get_producer();
 
         //let stats = self.get_udp_stats_sender();
 
+        // create the temporary network buffer needed to capture the network samples
+        let mut temp_network_buffer = vec![0u8; MAX_UDP_PACKET_LENGTH].into_boxed_slice();
+
         loop {
             //println!("Inside Receiver Loop, {}", socket.local_addr().unwrap());
             let mut prod = buffer_producer.lock().unwrap();
+            let mut consumed = 0;
+            let mut dropped = 0;
             //let cap: usize = prod.capacity().into();
 
             if let Ok(msg) = udp_msg.try_recv() {
                 match msg {
                     UdpStatus::DidEnd => {
-                        println!("Exiting UDP Receiver Loop");
+                        info!("Exiting UDP Receiver Loop");
                         break;
                     }
                 }
             }
 
-            // create the temporary network buffer needed to capture the network samples
-            let mut temp_network_buffer = vec![0u8; MAX_UDP_PACKET_LENGTH].into_boxed_slice();
-
             // Receive from the Network
             match socket.recv(&mut temp_network_buffer) {
                 Ok(received) => {
                     let packet: UdpAudioPacket =
-                        bincode2::deserialize_from(&temp_network_buffer[..received]).unwrap();
+                        bincode2::deserialize_from(&temp_network_buffer[..received])
+                            .map_err(|e| UdpError::DeserializeError(e))?;
+                    trace!("Received Packet: {:?}", packet);
 
                     // Convert the buffered network samples to the specified sample format
-                    let converted_samples: &[T] = bytemuck::cast_slice(&packet.data);
+                    let converted_samples: &[T] = bytemuck::try_cast_slice(&packet.data)
+                        .map_err(|e| UdpError::CastingError(e))?;
 
-                    //let pre_occupied_buffer = prod.occupied_len();
-
+                    trace!("Converted Packet: {:?}", converted_samples);
                     // Transfer Samples bytewise
                     for &sample in converted_samples {
                         // TODO implement fell-behind logic here
-                        let _ = prod.try_push(sample);
+                        if let Err(err) = prod.try_push(sample) {
+                            dropped += 1;
+                        } else {
+                            consumed += 1;
+                        }
                     }
+                    //let pre_occupied_buffer = prod.occupied_len();
 
                     //let post_occupied_buffer = prod.occupied_len();
-
-                    // Send Statistics about the current operation to the stats channel
-                    /*if let Some(ref s) = stats {
-                        s.send(NetworkUDPStats {
-                            sent: None,
-                            received: Some(received),
-                            pre_occupied_buffer,
-                            post_occupied_buffer,
-                        })
-                        .unwrap();
-                    }*/
                 }
                 Err(e) => {
-                    if e.kind() == ErrorKind::WouldBlock {
+                    if e.kind() == ErrorKind::WouldBlock || e.kind() == ErrorKind::TimedOut {
                         // signals that there is no data available. just continue with the loop
                         // until data becomes available
                         continue;
                     } else {
-                        eprintln!("UDP receive error: {:?}", e)
+                        //error!("UDP receive error: {:?}", e);
+                        return Err(UdpError::UdpReceiveError(e));
                     }
                 }
             }
+
+            // Send Statistics about the current operation to the stats channel
+            /*if let Some(ref s) = stats {
+                s.send(NetworkUDPStats { consumed, dropped }).unwrap();
+            }*/
         }
+        Ok(())
     }
 }
 
@@ -243,6 +279,7 @@ mod tests {
         time::Duration,
     };
 
+    use log::info;
     use rand::Rng;
     use ringbuf::{
         HeapCons, HeapProd,
@@ -266,7 +303,7 @@ mod tests {
         pub fn new(buffer_size: usize) -> (Self, AppDebug) {
             let audio_buffer = ringbuf::HeapRb::<u8>::new(buffer_size);
 
-            println!("{}", audio_buffer.capacity());
+            info!("Buffer Capacity: {}", audio_buffer.capacity());
 
             let (audio_buffer_prod, audio_buffer_cons) = audio_buffer.split();
 
@@ -334,9 +371,7 @@ mod tests {
     }
 
     #[test]
-    fn test_packet_fragmentation() {
-        
-    }
+    fn test_packet_fragmentation() {}
 
     #[test]
     fn flow_sends_when_buffer_is_full() {
