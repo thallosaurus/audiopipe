@@ -17,7 +17,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Install ALSA
-      run: sudo apt-get update && sudo apt-get install -yqq alsa-utils alsa-lib
+      run: sudo apt-get update && sudo apt-get install -yqq alsa-utils
     - name: Build
       run: cargo build --verbose
     - name: Run tests
