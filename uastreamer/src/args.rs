@@ -30,6 +30,7 @@ pub struct NewCliArgs {
     #[clap(short = 'c')]
     pub output_channels: Vec<usize>,
 
+    /// Sets Verbosity
     #[command(flatten)]
     pub verbose: Verbosity<InfoLevel>
 }
