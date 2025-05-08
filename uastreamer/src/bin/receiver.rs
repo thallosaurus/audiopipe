@@ -1,7 +1,7 @@
 use std::sync::mpsc::channel;
 
 use uastreamer::{
-    components::control::{TcpControlFlow, UdpReceiverCommands}, config::StreamerConfig, App, Direction
+    components::{control::TcpControlFlow, udp::UdpReceiverCommands}, config::StreamerConfig, App, Direction
 };
 
 fn main() {

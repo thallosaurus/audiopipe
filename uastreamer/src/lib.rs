@@ -14,8 +14,8 @@ use std::{
 use bytemuck::Pod;
 
 use components::{
-    control::TcpControlFlow,
-    cpal::{CpalAudioFlow, CpalStats},
+    control::{StartedStream, TcpControlFlow},
+    cpal::{CpalAudioFlow, CpalStats, CpalStatus},
     udp::{NetworkUDPStats, UdpStatus, UdpStreamFlow},
 };
 use cpal::{traits::*, *};
@@ -274,11 +274,17 @@ impl<T> TcpControlFlow for App<T>
 where
     T: cpal::SizedSample + Send + Pod + Default + Debug + 'static,
 {
-    fn start_stream(&mut self, config: StreamerConfig, target: SocketAddr) -> anyhow::Result<()> {
+    fn start_stream(
+        &mut self,
+        config: StreamerConfig,
+        target: SocketAddr,
+    ) -> anyhow::Result<StartedStream> {
         // Sync Channel for the buffer
         // If sent, the udp thread is instructed to empty the contents of the buffer and send them
         let (chan_sync_tx, chan_sync_rx) = channel::<bool>();
-        let (cpal_channel_tx, cpal_channel_rx) = channel::<bool>();
+        
+        let (cpal_channel_tx, cpal_channel_rx) = channel::<CpalStatus>();
+        let (udp_msg_tx, udp_msg_rx) = channel::<UdpStatus>();
 
         //start video capture and udp sender here
         let dir = config.direction;
@@ -306,17 +312,19 @@ where
                     stats,
                     prod,
                     cons,
-                    chan_sync_tx
+                    chan_sync_tx,
                 )
                 .unwrap();
 
-            _stream.play().unwrap();
+                _stream.play().unwrap();
 
                 loop {
                     //block
                     if let Ok(msg) = cpal_channel_rx.try_recv() {
-                        if msg {
-                            break;
+                        match msg {
+                            CpalStatus::DidEnd => {
+                                break
+                            },
                         }
                     }
                 }
@@ -332,9 +340,7 @@ where
 
             let t = target.clone();
             //t.set_ip(IpAddr::from_str("0.0.0.0").unwrap());
-            //t.set_port(42069);
-
-            let (udp_msg_tx, udp_msg_rx) = channel::<UdpStatus>();
+            //t.set_port(42069);let (udp_msg_tx, udp_msg_rx) = channel::<UdpStatus>();
 
             self.pool.execute(move || {
                 Self::construct_udp_stream(
@@ -344,13 +350,12 @@ where
                     prod,
                     Some(stats),
                     udp_msg_rx,
-                    chan_sync_rx
-
+                    chan_sync_rx,
                 )
                 .unwrap();
             });
         }
-        Ok(())
+        Ok((udp_msg_tx,cpal_channel_tx))
     }
 
     fn stop_stream(&self) -> anyhow::Result<()> {

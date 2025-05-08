@@ -20,6 +20,10 @@ use crate::{
     write_debug,
 };
 
+pub enum CpalStatus {
+    DidEnd,
+}
+
 /// Stats which get sent during each CPAL Callback Invocation after the main action is done
 #[derive(Default)]
 pub struct CpalStats {

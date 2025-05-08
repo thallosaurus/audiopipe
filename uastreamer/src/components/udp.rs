@@ -22,6 +22,16 @@ pub enum UdpStatus {
     DidEnd,
 }
 
+#[derive(Debug)]
+pub enum UdpReceiverCommands {
+    Stop,
+}
+
+#[derive(Debug)]
+pub enum UdpSenderCommands {
+    Stop,
+}
+
 const MAX_UDP_PACKET_LENGTH: usize = 65535;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -139,7 +149,6 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                     seq += 1;
                 }
             }
-            //std::thread::sleep(Duration::from_millis(50));
         }
     }
 
@@ -321,6 +330,11 @@ mod tests {
         udp_msg_tx.send(UdpStatus::DidEnd).unwrap();
 
         t.join().unwrap();
+    }
+
+    #[test]
+    fn test_packet_fragmentation() {
+        
     }
 
     #[test]

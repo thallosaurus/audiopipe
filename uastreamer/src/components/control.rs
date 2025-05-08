@@ -2,7 +2,7 @@ use std::{
     io::{BufRead, BufReader, BufWriter, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     str::FromStr,
-    sync::mpsc::Receiver,
+    sync::mpsc::{Receiver, Sender},
     time::Duration,
 };
 
@@ -11,15 +11,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Direction, config::StreamerConfig};
 
-#[derive(Debug)]
-pub enum UdpReceiverCommands {
-    Stop,
-}
+use super::{cpal::CpalStatus, udp::{UdpReceiverCommands, UdpSenderCommands, UdpStatus}};
 
-#[derive(Debug)]
-pub enum UdpSenderCommands {
-    Stop,
-}
+pub type StartedStream = (Sender<UdpStatus>,Sender<CpalStatus>);
+
+const MAX_TCP_PACKET_SIZE: usize = 65535;
 
 /// Contains methods that implement the tcp control functionality
 ///
@@ -80,7 +76,7 @@ pub trait TcpControlFlow {
     }
 
     /// This method gets called to start the udp stream
-    fn start_stream(&mut self, config: StreamerConfig, target: SocketAddr) -> anyhow::Result<()>;
+    fn start_stream(&mut self, config: StreamerConfig, target: SocketAddr) -> anyhow::Result<StartedStream>;
 
     /// This method gets called to stop running udp stream
     fn stop_stream(&self) -> anyhow::Result<()>;
@@ -130,7 +126,7 @@ pub trait TcpControlFlow {
         // Send Connection Packet
         Self::write_to_stream(&stream, packet)?;
 
-        let mut framesize_buffer = [0u8; 65535];
+        let mut framesize_buffer = [0u8; MAX_TCP_PACKET_SIZE];
 
         loop {
             // read command channel first
@@ -292,9 +288,9 @@ mod tests {
 
     use threadpool::ThreadPool;
 
-    use crate::{Direction, args::NewCliArgs, config::StreamerConfig};
+    use crate::{args::NewCliArgs, components::{cpal::CpalStatus, udp::UdpStatus}, config::StreamerConfig, Direction};
 
-    use super::{TcpControlFlow, UdpReceiverCommands, UdpSenderCommands};
+    use super::{StartedStream, TcpControlFlow, UdpReceiverCommands, UdpSenderCommands};
 
     struct TcpCommunication {}
     impl TcpControlFlow for TcpCommunication {
@@ -302,10 +298,13 @@ mod tests {
             &mut self,
             _config: StreamerConfig,
             _target: SocketAddr,
-        ) -> anyhow::Result<()> {
+        ) -> anyhow::Result<StartedStream> {
             println!("Creating Debug Stream");
             assert!(true);
-            Ok(())
+
+            let (cpal_msg_tx, cpal_msg_rx) = channel::<CpalStatus>();
+            let (udp_msg_tx, udp_msg_rx) = channel::<UdpStatus>();
+            Ok((udp_msg_tx,cpal_msg_tx))
         }
 
         fn stop_stream(&self) -> anyhow::Result<()> {
