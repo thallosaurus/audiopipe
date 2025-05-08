@@ -9,7 +9,7 @@ use std::{
 };
 
 use bytemuck::Pod;
-use log::info;
+use log::{debug, error, info, trace};
 use ringbuf::{
     HeapCons, HeapProd,
     traits::{Consumer, Observer, Producer},
@@ -127,14 +127,15 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             let mut buffer_consumer = buffer_consumer.lock().unwrap();
 
             // Only send the network package if the network buffer is full or we got the signal
-            if chan_sync.try_recv().unwrap_or(false) || buffer_consumer.is_full() && !buffer_consumer.is_empty() {
+            if chan_sync.try_recv().unwrap_or(false) || buffer_consumer.is_full() {
                 
                 // find out if this might be the epicenter of the glitches
-                // 08.05.2025: no, but removing it makes bytemuck on receiver side angry
+                // 08.05.2025: no, but removing it makes bytemuck on receiver side angry somehow - TODO
                 while !buffer_consumer.is_empty() {
                     let mut data_buf: Box<[T]> =
                         vec![T::default(); MAX_UDP_PACKET_LENGTH].into_boxed_slice();
                     let consumed = buffer_consumer.pop_slice(&mut data_buf);
+                    debug!("Consumed {} bytes", consumed);
                     let udp_data: &[u8] = bytemuck::cast_slice(&data_buf[..consumed]);
 
                     let packet = UdpAudioPacket {
@@ -146,9 +147,11 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                         sequence: seq,
                         timestamp: SystemTime::now(),
                     };
-
+                    trace!("> UDP Packet (Seq: #{}: {:?}", seq, packet);
+                    
                     let set = bincode2::serialize(&packet).unwrap();
-
+                    trace!("> UDP Packet Serialized: {:?}", set);
+                    
                     let _sent_s = socket.send(&set).unwrap();
                     seq += 1;
                 }
@@ -191,9 +194,11 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                 Ok(received) => {
                     let packet: UdpAudioPacket =
                         bincode2::deserialize_from(&temp_network_buffer[..received]).unwrap();
-
-                    // Convert the buffered network samples to the specified sample format
-                    let converted_samples: Result<&[T], bytemuck::PodCastError> = bytemuck::try_cast_slice(&packet.data);
+                        trace!("Received Packet: {:?}", packet);
+                        
+                        // Convert the buffered network samples to the specified sample format
+                        let converted_samples: Result<&[T], bytemuck::PodCastError> = bytemuck::try_cast_slice(&packet.data);
+                        trace!("Converted Packet: {:?}", converted_samples);
                     match converted_samples {
                         Ok(c_samples) => {
                             // Transfer Samples bytewise
@@ -203,7 +208,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                             }
                         },
                         Err(err) => {
-                            eprintln!("{err}");
+                            error!("{err}");
                         },
                     }
 

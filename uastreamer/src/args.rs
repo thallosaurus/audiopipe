@@ -32,7 +32,7 @@ pub struct NewCliArgs {
 
     /// Sets Verbosity
     #[command(flatten)]
-    pub verbose: Verbosity<InfoLevel>
+    pub verbose: Verbosity
 }
 
 impl Default for NewCliArgs {
