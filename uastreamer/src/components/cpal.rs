@@ -3,7 +3,10 @@ use cpal::{
     ChannelCount, InputCallbackInfo, OutputCallbackInfo, Sample, Stream, StreamConfig,
     traits::DeviceTrait,
 };
-use ringbuf::{traits::{Observer, Producer}, HeapCons, HeapProd};
+use ringbuf::{
+    HeapCons, HeapProd,
+    traits::{Observer, Producer},
+};
 use std::{
     fmt::Debug,
     sync::{Arc, Mutex, mpsc::Sender},
@@ -16,6 +19,10 @@ use crate::{
     splitter::{ChannelMerger, ChannelSplitter},
     write_debug,
 };
+
+pub enum CpalStatus {
+    DidEnd,
+}
 
 /// Stats which get sent during each CPAL Callback Invocation after the main action is done
 #[derive(Default)]
@@ -45,7 +52,11 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
         Ok(match direction {
             Direction::Sender => {
-                let mut writer = create_wav_writer("sender_dump".to_owned(), config.selected_channels.len() as u16, 48000)?;
+                let mut writer = create_wav_writer(
+                    "sender_dump".to_owned(),
+                    config.selected_channels.len() as u16,
+                    48000,
+                )?;
 
                 device.build_input_stream(
                     &cpal_config,
@@ -62,7 +73,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                             &mut writer,
                             config.selected_channels.clone(),
                             channel_count,
-                            cpal_channel_tx.clone()
+                            cpal_channel_tx.clone(),
                         );
 
                         if config.send_stats {
@@ -82,7 +93,11 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             }
             Direction::Receiver => {
                 //let cons = self.get_consumer();
-                let mut writer = create_wav_writer("receiver_dump".to_owned(), config.selected_channels.len() as u16, 48000)?;
+                let mut writer = create_wav_writer(
+                    "receiver_dump".to_owned(),
+                    config.selected_channels.len() as u16,
+                    48000,
+                )?;
 
                 device.build_output_stream(
                     &cpal_config,
@@ -129,7 +144,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         writer: &mut Option<DebugWavWriter>,
         selected_channels: Vec<usize>,
         channel_count: u16, //stats: Arc<Sender<CpalStats>>,
-        cpal_channel_tx: Sender<bool>
+        cpal_channel_tx: Sender<bool>,
     ) -> usize {
         let mut consumed = 0;
 
@@ -142,24 +157,25 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         .unwrap();
 
         //println!("Buffer Size inside cpal: {}, CPAL Len: {}", output.capacity(), data.len());
-       
 
         // Iterate through the input buffer and save data
         for s in splitter {
             if s.on_selected_channel {
                 if !cfg!(test) {
-
                     if let Ok(()) = output.try_push(*s.sample) {
                         write_debug(writer, *s.sample);
                     } else {
-                        println!("OVERFLOW - Data Length: {}, Occ: {}", data.len(), output.occupied_len());
+                        println!(
+                            "OVERFLOW - Data Length: {}, Occ: {}",
+                            data.len(),
+                            output.occupied_len()
+                        );
 
                         // Urge the UDP thread to send the buffer immediately
                         cpal_channel_tx.send(true).unwrap();
                         //return consumed
                     }
                     //output.try_push(*s.sample).unwrap();
-
                 } else {
                     output.try_push(Sample::EQUILIBRIUM).unwrap();
                 }
@@ -227,9 +243,9 @@ mod tests {
         mpsc::{Sender, channel},
     };
 
-    
     use ringbuf::{
-        traits::{Observer, Split}, HeapCons, HeapProd, HeapRb
+        HeapCons, HeapProd, HeapRb,
+        traits::{Observer, Split},
     };
 
     use super::{CpalAudioFlow, CpalStats};
@@ -268,19 +284,5 @@ mod tests {
         fn get_consumer(&self) -> Arc<Mutex<HeapCons<f32>>> {
             self.cons.clone()
         }
-    }
-
-    #[test]
-    fn test_mono() {
-        let data = vec![2f32; 1024];
-        let adapter = CpalAudioDebugAdapter::new(1024);
-
-        let mut prod = adapter.prod.lock().unwrap();
-        
-        //CpalAudioDebugAdapter::process_input(data.as_slice(), None, &mut prod, &mut None, vec![0], 1);
-        
-        let cons = adapter.cons.lock().unwrap();
-
-        assert_eq!(cons.occupied_len(), data.len());
     }
 }

@@ -5,11 +5,11 @@ use crate::{PKG_NAME, VERSION};
 #[derive(Parser, Debug, Clone)]
 #[command(version, about = format!("{} (v{})", PKG_NAME, VERSION), long_about = None)]
 pub struct NewCliArgs {
-    /// Name of the Audio Host
+    /// Name of the Audio Host - REQUIRED if you are the sender
     #[arg(short, long)]
     pub network_host: Option<String>,
 
-    /// Name of the Audio Host
+    /// Name of the Audio Host - Uses default AudioHost if left empty
     #[arg(short, long)]
     pub audio_host: Option<String>,
 

@@ -1,5 +1,7 @@
+use std::sync::mpsc::channel;
+
 use uastreamer::{
-    App, Direction, components::control::TcpControlFlow, config::StreamerConfig,
+    components::{control::TcpControlFlow, udp::UdpReceiverCommands}, config::StreamerConfig, App, Direction
 };
 
 fn main() {
@@ -7,7 +9,10 @@ fn main() {
     let config = StreamerConfig::from_cli_args(Direction::Receiver).unwrap();
 
     let (mut app, _) = App::<f32>::new(config.clone());
-    app.serve(config).unwrap();
+
+    let (cmd_tx, cmd_rx) = channel::<UdpReceiverCommands>();
+
+    app.tcp_serve(config, None, Some(cmd_rx)).unwrap();
 
     app.pool.join();
 }
