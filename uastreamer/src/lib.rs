@@ -277,6 +277,9 @@ where
     fn start_stream(&mut self, config: StreamerConfig, target: SocketAddr) -> anyhow::Result<()> {
         let (chan_sync_tx, chan_sync_rx) = channel::<bool>();
         let (cpal_channel_tx, cpal_channel_rx) = channel::<bool>();
+
+
+
         //start video capture and udp sender here
         let dir = config.direction;
         {

@@ -78,9 +78,7 @@ impl StreamerConfig {
         buffer_size: usize,
         selected_channels: Vec<usize>,
         network_host: Option<String>,
-
         audio_host: Option<String>,
-
         device: Option<String>,
         port: Option<u16>,
     ) -> anyhow::Result<Self> {
