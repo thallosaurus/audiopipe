@@ -255,9 +255,9 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             }
 
             // Send Statistics about the current operation to the stats channel
-            /*if let Some(ref s) = stats {
+            if let Some(ref s) = stats {
                 s.send(NetworkUDPStats { consumed, dropped }).unwrap();
-            }*/
+            }
         }
         Ok(())
     }
