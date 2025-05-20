@@ -38,8 +38,8 @@ impl FromStr for ChannelMapping {
 #[command(version, about = format!("{} (v{})", PKG_NAME, VERSION), long_about = None)]
 pub struct NewCliArgs {
     /// Name of the Audio Host - REQUIRED if you are the sender
-    #[arg(short, long)]
-    pub network_host: Option<String>,
+    //#[arg(short, long)]
+    //pub network_host: Option<String>,
 
     /// Name of the Audio Host - Uses default AudioHost if left empty
     #[arg(short, long)]
@@ -74,7 +74,7 @@ impl Default for NewCliArgs {
             buffer_size: Default::default(),
             port: Default::default(),
             output_channels: Default::default(),
-            network_host: Default::default(),
+            //network_host: Default::default(),
             verbose: Verbosity::default(),
             //test: ChannelMapping::default(),
         }

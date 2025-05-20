@@ -14,11 +14,7 @@ use std::{
 };
 
 use crate::{
-    DebugWavWriter, Direction,
-    config::StreamerConfig,
-    create_wav_writer,
-    splitter::{ChannelMerger, ChannelSplitter},
-    write_debug,
+    config::StreamerConfig, create_wav_writer, scommand::DirectionCommand, splitter::{ChannelMerger, ChannelSplitter}, write_debug, DebugWavWriter, Direction
 };
 
 pub enum CpalError {
@@ -44,7 +40,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
 
     // Static because this is the entry point from the new thread
     fn construct_stream(
-        direction: Direction,
+        direction: &DirectionCommand,
         device: &cpal::Device,
         cpal_config: StreamConfig,
         config: StreamerConfig,
@@ -56,7 +52,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         //let stats = self.get_cpal_stats_sender();
 
         Ok(match direction {
-            Direction::Sender => {
+            DirectionCommand::Sender { target, channels } => {
                 let mut writer = create_wav_writer(
                     "sender_dump".to_owned(),
                     config.selected_channels.len() as u16,
@@ -96,7 +92,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                     None,
                 )?
             }
-            Direction::Receiver => {
+            DirectionCommand::Receiver { channels } => {
                 //let cons = self.get_consumer();
                 let mut writer = create_wav_writer(
                     "receiver_dump".to_owned(),

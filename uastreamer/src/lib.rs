@@ -62,10 +62,13 @@ pub mod components;
 
 pub mod ualog;
 
+pub mod scommand;
+
 /// Defines the behavior of the stream
 ///
 /// Sender: Captures from an audio input stream and sends it over the network
 /// Receiver: Receives from the network and outputs it to a audio output stream
+#[deprecated]
 #[derive(Debug, Clone, Copy)]
 pub enum Direction {
     Sender,
@@ -280,11 +283,7 @@ impl<T> TcpControlFlow for App<T>
 where
     T: cpal::SizedSample + Send + Pod + Default + Debug + 'static,
 {
-    fn start_stream(
-        &mut self,
-        config: StreamerConfig,
-        target: SocketAddr,
-    ) -> TcpResult<()> {
+    fn start_stream(&mut self, config: StreamerConfig, target: SocketAddr) -> TcpResult<()> {
         // Sync Channel for the buffer
         // If sent, the udp thread is instructed to empty the contents of the buffer and send them
         let (chan_sync_tx, chan_sync_rx) = channel::<bool>();
@@ -303,10 +302,11 @@ where
             let prod = self.get_producer();
             let cons = self.get_consumer();
             let streamer_config = config.clone();
+            let dir = dir.clone();
 
             self.pool.execute(move || {
                 let (d, stream_config) = get_cpal_config(
-                    config.direction,
+                    &dir,
                     config.program_args.audio_host,
                     config.program_args.device,
                 )
@@ -314,7 +314,7 @@ where
 
                 //let device = device.lock().unwrap();
                 match Self::construct_stream(
-                    dir,
+                    &dir,
                     &d,
                     stream_config,
                     streamer_config,
@@ -347,6 +347,7 @@ where
             let prod = self.udp_get_producer();
             let cons = self.udp_get_consumer();
             let stats = self.get_udp_stats_sender();
+            let dir = dir.clone();
             debug!("{:?}", target);
 
             let t = target.clone();
@@ -355,7 +356,7 @@ where
 
             self.pool.execute(move || {
                 Self::construct_udp_stream(
-                    dir,
+                    &dir,
                     t,
                     cons,
                     prod,
@@ -371,15 +372,13 @@ where
 
     fn stop_stream(&self) -> TcpResult<()> {
         if let Some(ch) = &self.udp_command_sender {
-            ch.send(UdpStatus::DidEnd).map_err(|e| {
-                TcpErrors::UdpStatsSendError(e)
-            })?;
+            ch.send(UdpStatus::DidEnd)
+                .map_err(|e| TcpErrors::UdpStatsSendError(e))?;
         }
 
         if let Some(ch) = &self.cpal_command_sender {
-            ch.send(CpalStatus::DidEnd).map_err(|e| {
-                TcpErrors::CpalStatsSendError(e)
-            })?;
+            ch.send(CpalStatus::DidEnd)
+                .map_err(|e| TcpErrors::CpalStatsSendError(e))?;
         }
 
         Ok(())

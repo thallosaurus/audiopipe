@@ -17,7 +17,7 @@ use ringbuf::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::Direction;
+use crate::{scommand::DirectionCommand, Direction};
 
 #[derive(Debug)]
 pub enum UdpError {
@@ -66,7 +66,7 @@ pub struct NetworkUDPStats {
 
 pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     fn construct_udp_stream(
-        direction: Direction,
+        direction: &DirectionCommand,
         target: SocketAddr,
         buffer_consumer: Arc<Mutex<HeapCons<T>>>,
         buffer_producer: Arc<Mutex<HeapProd<T>>>,
@@ -77,7 +77,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
         //let (udp_msg_tx, udp_msg_rx) = channel::<UdpStatus>();
 
         match direction {
-            Direction::Sender => {
+            DirectionCommand::Sender { target, channels } => {
                 let socket = UdpSocket::bind("0.0.0.0:0").map_err(|e| UdpError::BindFailed(e))?;
                 //let f = format!("{}:{}", target, config.port);
                 info!("Connecting UDP to {}", target);
@@ -94,7 +94,7 @@ pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
                     chan_sync,
                 )?;
             }
-            Direction::Receiver => {
+            DirectionCommand::Receiver { channels } => {
                 // The receiver listens on local_port:ip.
                 let socket = UdpSocket::bind(target).map_err(|e| UdpError::BindFailed(e))?;
                 info!("Receiving UDP on {}", target);
@@ -286,7 +286,7 @@ mod tests {
         traits::{Observer, Producer, Split},
     };
 
-    use crate::{AppDebug, components::cpal::CpalStats};
+    use crate::{components::cpal::CpalStats, scommand::DirectionCommand, AppDebug};
 
     use super::{NetworkUDPStats, UdpStatus, UdpStreamFlow};
 
@@ -354,7 +354,7 @@ mod tests {
 
         let t = thread::spawn(move || {
             UdpTransportDebugAdapter::construct_udp_stream(
-                crate::Direction::Receiver,
+                DirectionCommand::Receiver { channels: todo!() },
                 receiver_addr,
                 sender.audio_buffer_cons,
                 sender.audio_buffer_prod,
@@ -397,7 +397,7 @@ mod tests {
         // Receiver
         thread::spawn(move || {
             UdpTransportDebugAdapter::construct_udp_stream(
-                crate::Direction::Receiver,
+                DirectionCommand::Receiver { channels: todo!() },
                 receiver_addr,
                 cons,
                 prod,
@@ -416,7 +416,7 @@ mod tests {
 
         thread::spawn(move || {
             UdpTransportDebugAdapter::construct_udp_stream(
-                crate::Direction::Sender,
+                DirectionCommand::Sender { target: todo!(), channels: todo!() },
                 sender_addr,
                 cons,
                 prod,
@@ -468,7 +468,7 @@ mod tests {
             // Receiver
             thread::spawn(move || {
                 UdpTransportDebugAdapter::construct_udp_stream(
-                    crate::Direction::Receiver,
+                    DirectionCommand::Receiver { channels: todo!() },
                     stub_tcp_receiver_addr,
                     cons,
                     prod,
@@ -485,7 +485,7 @@ mod tests {
 
             thread::spawn(move || {
                 UdpTransportDebugAdapter::construct_udp_stream(
-                    crate::Direction::Sender,
+                    DirectionCommand::Sender { target: todo!(), channels: todo!() },
                     stub_tcp_sender_addr,
                     cons,
                     prod,

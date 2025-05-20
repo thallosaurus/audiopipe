@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{net::SocketAddr, str::FromStr};
 
 use clap::{Args, Parser, Subcommand};
 use clap_verbosity_flag::Verbosity;
@@ -44,8 +44,9 @@ pub struct AppArgs {
 #[derive(Debug, Subcommand, Clone)]
 pub enum DirectionCommand {
     Sender {
+        /// The TCP Address of the Target Server
         #[clap(long, short = 't')]
-        target: String,
+        target: SocketAddr,
 
         /// Selects the tracks to which the app will push data to
         #[clap(long, short = 'c')]

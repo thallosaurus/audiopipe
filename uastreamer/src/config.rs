@@ -5,11 +5,11 @@ use cpal::{
     traits::{DeviceTrait, HostTrait},
 };
 
-use crate::{Direction, args::NewCliArgs, search_device, search_for_host};
+use crate::{args::NewCliArgs, scommand::DirectionCommand, search_device, search_for_host, Direction};
 
 #[derive(Clone, Debug)]
 pub struct StreamerConfig {
-    pub direction: Direction,
+    pub direction: DirectionCommand,
     //pub cpal_config: cpal::StreamConfig,
     pub buffer_size: usize,
     //pub channel_count: ChannelCount,
@@ -20,7 +20,7 @@ pub struct StreamerConfig {
 }
 
 pub fn get_cpal_config(
-    direction: Direction,
+    direction: &DirectionCommand,
     audio_host: Option<String>,
     device_name: Option<String>,
 ) -> anyhow::Result<(Device, StreamConfig)> {
@@ -31,7 +31,7 @@ pub fn get_cpal_config(
     };
 
     match direction {
-        Direction::Sender => {
+        DirectionCommand::Sender { target, channels } => {
             let device = if let Some(device) = device_name {
                 host.input_devices()?.find(|x| search_device(x, &device))
             } else {
@@ -43,7 +43,7 @@ pub fn get_cpal_config(
 
             Ok((device, default_config.into()))
         }
-        Direction::Receiver => {
+        DirectionCommand::Receiver { channels } => {
             let device = if let Some(device) = device_name {
                 host.output_devices()?.find(|x| search_device(x, &device))
             } else {
@@ -59,7 +59,7 @@ pub fn get_cpal_config(
 }
 
 impl StreamerConfig {
-    pub fn from_cli_args(direction: Direction) -> anyhow::Result<Self> {
+    pub fn from_cli_args(direction: DirectionCommand) -> anyhow::Result<Self> {
         let args = NewCliArgs::parse();
         let program_args = args.clone();
         //let (device, config) = get_cpal_config(direction, args.audio_host, args.device).unwrap();
@@ -75,7 +75,7 @@ impl StreamerConfig {
     }
 
     pub fn new(
-        direction: Direction,
+        direction: DirectionCommand,
         buffer_size: usize,
         selected_channels: Vec<usize>,
         network_host: Option<String>,
@@ -95,7 +95,7 @@ impl StreamerConfig {
                 buffer_size: Some(buffer_size),
                 port,
                 output_channels: selected_channels.clone(),
-                network_host,
+                //network_host,
                 audio_host,
                 verbose: Verbosity::new(0, 0),
                 //test: todo!(),

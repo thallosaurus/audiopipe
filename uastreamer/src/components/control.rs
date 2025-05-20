@@ -10,7 +10,7 @@ use log::{debug, error, info, trace};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use crate::{components::udp::UdpError, config::StreamerConfig, Direction};
+use crate::{components::udp::UdpError, config::StreamerConfig, scommand::DirectionCommand, Direction};
 
 use super::{
     cpal::CpalStatus,
@@ -122,20 +122,16 @@ pub trait TcpControlFlow {
         sender_commands: Option<Receiver<UdpSenderCommands>>,
         receiver_commands: Option<Receiver<UdpReceiverCommands>>,
     ) -> TcpResult<()> {
-        let addr = streamer_config
-            .clone()
-            .program_args
-            .network_host
-            .unwrap_or(String::from("0.0.0.0:42069"));
 
-        let target = SocketAddr::from_str(&addr).unwrap();
-        match streamer_config.direction {
-            Direction::Sender => {
-                let mut stream = Self::create_new_tcp_stream(target)?;
+
+        match &streamer_config.direction {
+            DirectionCommand::Sender { target, channels } => {
+                let t = SocketAddr::from_str(&target).unwrap();
+                let mut stream = Self::create_new_tcp_stream(t)?;
 
                 info!("connecting to {}", target);
                 let _sender_loop = self.sender_loop(
-                    target,
+                    t,
                     &mut stream,
                     streamer_config,
                     sender_commands.expect("sender loop needs sender commands"),
@@ -144,12 +140,13 @@ pub trait TcpControlFlow {
                 //Stop stream if the sender loop quits
                 self.stop_stream()?;
             }
-            Direction::Receiver => {
+            DirectionCommand::Receiver { channels } => {
+                let target = SocketAddr::from_str("0.0.0.0:0").unwrap();
                 let listener = Self::create_new_tcp_listener(target)?;
                 info!("listening to {}", target);
                 self.receiver_loop(
                     listener,
-                    streamer_config,
+                    streamer_config.clone(),
                     receiver_commands.expect("receiver loop needs receiver commands"),
                 )?;
                 self.stop_stream()?;
@@ -375,10 +372,7 @@ mod tests {
     use threadpool::ThreadPool;
 
     use crate::{
-        Direction,
-        args::NewCliArgs,
-        components::{cpal::CpalStatus, udp::UdpStatus},
-        config::StreamerConfig,
+        args::NewCliArgs, components::{cpal::CpalStatus, udp::UdpStatus}, config::StreamerConfig, scommand::DirectionCommand, Direction
     };
 
     use super::{StartedStream, TcpControlFlow, TcpErrors, UdpReceiverCommands, UdpSenderCommands};
@@ -410,7 +404,7 @@ mod tests {
             let args = NewCliArgs::default();
 
             let sconfig = StreamerConfig {
-                direction: Direction::Receiver,
+                direction: DirectionCommand::Receiver { channels: todo!() },
                 buffer_size: 1024,
                 send_stats: false,
                 selected_channels: vec![0, 1],
@@ -432,7 +426,7 @@ mod tests {
             let args = NewCliArgs::default();
 
             let sconfig = StreamerConfig {
-                direction: Direction::Sender,
+                direction: DirectionCommand::Sender { target: todo!(), channels: todo!() },
                 buffer_size: 1024,
                 send_stats: false,
                 selected_channels: vec![0, 1],
