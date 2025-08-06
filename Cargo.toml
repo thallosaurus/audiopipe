@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-    "uastreamer", 
+    "uastreamer"
     #"test-app/src-tauri"
 ]
