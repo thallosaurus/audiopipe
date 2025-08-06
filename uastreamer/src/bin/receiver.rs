@@ -20,5 +20,4 @@ fn main() {
     app.tcp_serve(config, None, Some(cmd_rx)).unwrap();
 
     app.pool.join();
-
 }
