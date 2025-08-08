@@ -6,7 +6,7 @@ use cpal::{
 use log::info;
 use uastreamer::{
     async_comp::{
-        audio::{select_input_device_config, select_output_device_config, setup_master_output},
+        audio::{default_mixer, select_input_device_config, select_output_device_config, setup_master_output},
         tcp::tcp_server,
     },
     cli::{Cli, Commands},
@@ -128,6 +128,7 @@ async fn init_receiver(
     info!("max_buffer_size: {}", max_bufsize);
 
     let sconfig: StreamConfig = config.into();
+    let chcount = sconfig.channels;
 
     info!(
         "Using Audio Device {}, Sample Rate: {}, Buffer Size: {:?}, Channel Count: {}",
@@ -136,17 +137,20 @@ async fn init_receiver(
             .unwrap_or("Unknown Device Name".to_string()),
         sconfig.sample_rate.0,
         sconfig.buffer_size,
-        sconfig.channels
+        chcount
     );
 
+    let mut mixer = default_mixer(chcount as usize, bsize as usize);
+
     let master_stream =
-        setup_master_output(output_device, sconfig, max_bufsize as usize, vec![0, 1])
+        setup_master_output(output_device, sconfig, vec![0, 1], mixer.0)
             .await
             .expect("couldn't build master output");
 
     master_stream.play().unwrap();
 
-    tcp_server("0.0.0.0", 2, bsize).await.unwrap();
+    // TODO add receiving address
+    tcp_server("0.0.0.0", chcount.into()).await.unwrap();
 }
 
 fn enumerate_devices(audio_host: Option<String>, device_name: Option<String>) {

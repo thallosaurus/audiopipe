@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cpal::{
     BuildStreamError, Device, InputCallbackInfo, Sample, Stream, StreamConfig,
     SupportedStreamConfig, traits::DeviceTrait,
@@ -13,8 +15,9 @@ use tokio::sync::Mutex;
 use crate::splitter::ChannelSplitter;
 
 // TODO: Replace with the master mixer
-pub static GLOBAL_MASTER_OUTPUT: Lazy<Mutex<Option<HeapProd<f32>>>> =
-    Lazy::new(|| Mutex::new(None));
+//pub static GLOBAL_MASTER_OUTPUT: Lazy<Mutex<Option<HeapProd<f32>>>> = Lazy::new(|| Mutex::new(None));
+pub static GLOBAL_MASTER_OUTPUT_MIXER: Lazy<Option<SharedInputMixer>> = Lazy::new(|| None);
+
 pub static GLOBAL_MASTER_INPUT: Lazy<Mutex<Option<HeapCons<f32>>>> = Lazy::new(|| Mutex::new(None));
 
 pub fn select_input_device_config(
@@ -92,28 +95,32 @@ pub fn select_output_device_config(
 pub async fn setup_master_output(
     device: Device,
     config: StreamConfig,
-    bsize: usize,
-    selected_channels: Vec<usize>,
+    //bsize: usize,
+    selected_channels: Vec<u16>,
+    mixer: OutputMixer,
 ) -> Result<Stream, BuildStreamError> {
-    let rbuf = HeapRb::<f32>::new(bsize * config.channels as usize);
-    let (prod, cons) = rbuf.split();
+    //let mut master_out = GLOBAL_MASTER_OUTPUT.lock().await;
+    //master_out = Some(prod);
 
-    let mut master_out = GLOBAL_MASTER_OUTPUT.lock().await;
-    *master_out = Some(prod);
+    //let mut master_mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await;
 
-    let mut mixer = default_mixer(config.channels as usize, bsize);
+    //*master_mixer =
+    //let mut mixer = default_mixer(config.channels as usize, bsize);
+
+    let mixer = Arc::new(std::sync::Mutex::new(mixer));
 
     device.build_output_stream(
         &config,
         move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
             //trace!("Callback wants {:?} ", data.len());
+            let mut m = mixer.clone();
 
-            let consumed = mixer.mixdown(data);
-            trace!("Consumed: {}", consumed);
+            let consumed = m.lock().expect("mixer not available").mixdown(data);
+            //trace!("Consumed: {}", consumed);
 
             /*let mut merger =
-                ChannelMerger::new(&mut cons, &selected_channels, config.channels, data.len())
-                    .unwrap();*/
+            ChannelMerger::new(&mut cons, &selected_channels, config.channels, data.len())
+                .unwrap();*/
             //cons.read(buf)
             /*for sample in data.iter_mut() {
                 let s = merger.next();
@@ -193,49 +200,64 @@ pub async fn setup_master_input(
     )
 }
 
-enum Channel {
-    Mono(ChannelBuffer),
-    Stereo(ChannelBuffer, ChannelBuffer)
-}
-struct ChannelBuffer {
-    input: HeapProd<f32>,
-    output: HeapCons<f32>,
-}
-
-impl ChannelBuffer {
-    fn new(bufsize: usize) -> Self {
-        let buf = ringbuf::HeapRb::<f32>::new(bufsize);
-
-        let (prod, cons) = buf.split();
-        Self {
-            input: prod,
-            output: cons,
-        }
-    }
-}
-
-struct Mixer {
+pub struct OutputMixer {
     channel_count: MasterOutputChannelCount,
 
     buffer_size: usize,
-    channels: Vec<ChannelBuffer>,
+    outputs: Vec<HeapCons<f32>>,
 }
+
+pub struct InputMixer {
+    inputs: Vec<HeapProd<f32>>,
+}
+
+impl InputMixer {
+    pub fn get_channel(&mut self, channel: usize) -> &mut HeapProd<f32> {
+        self.inputs.get_mut(channel).expect("channel not found")
+    }
+
+    /*fn get_stereo_channel(&mut self, l_channel: usize, r_channel: usize) -> PairedMixer {
+        let mut left_channel = self.get_channel(l_channel);
+        let mut right_channel = self.get_channel(r_channel);
+
+        PairedMixer::Stereo(left_channel, right_channel)
+    }*/
+}
+
+pub type SharedInputMixer = Arc<Mutex<InputMixer>>;
+
+pub type CombinedMixer = (OutputMixer, InputMixer);
 
 type MasterOutputChannelCount = usize;
 
-impl Mixer {
-    fn get_channel_buffer(&mut self, channel: MasterOutputChannelCount) -> &mut ChannelBuffer {
-        self.channels.get_mut(channel).expect("channel not found")
+enum PairedMixer {
+    Mono(HeapProd<f32>),
+    Stereo(HeapProd<f32>, HeapProd<f32>),
+}
+
+impl OutputMixer {
+    fn get_channel_output_buffer(
+        &mut self,
+        channel: MasterOutputChannelCount,
+    ) -> &mut HeapCons<f32> {
+        self.outputs.get_mut(channel).expect("channel not found")
     }
 
-    fn mixdown(&mut self, output: &mut [f32]) -> usize {
+    /*fn get_channel_input_buffer(
+        &mut self,
+        channel: MasterOutputChannelCount,
+    ) -> &mut HeapProd<f32> {
+        self.inputs.get_mut(channel).expect("channel not found")
+    }*/
+
+    fn mixdown(&mut self, output_buffer: &mut [f32]) -> usize {
         let mut ch = 0;
 
         let mut consumed = 0;
-        for o in output.iter_mut() {
-            let c = self.get_channel_buffer(ch);
+        for o in output_buffer.iter_mut() {
+            let c = self.get_channel_output_buffer(ch);
 
-            *o = c.output.try_pop().unwrap_or(Sample::EQUILIBRIUM);
+            *o = c.try_pop().unwrap_or(Sample::EQUILIBRIUM);
             consumed += 1;
 
             ch = (ch + 1) % self.channel_count;
@@ -245,18 +267,31 @@ impl Mixer {
     }
 }
 
-fn default_mixer(chcount: MasterOutputChannelCount, bufsize_per_channel: usize) -> Mixer {
-    let mut channels = Vec::new();
+pub fn default_mixer(chcount: MasterOutputChannelCount, bufsize_per_channel: usize) -> CombinedMixer {
+    let mut inputs = Vec::new();
+    let mut outputs = Vec::new();
 
-    for c in 0..chcount {
-        channels.push(ChannelBuffer::new(bufsize_per_channel));
+    for _ in 0..chcount {
+        let buf = ringbuf::HeapRb::<f32>::new(bufsize_per_channel);
+
+        let (prod, cons) = buf.split();
+        inputs.push(prod);
+        outputs.push(cons);
     }
 
-    Mixer {
-        channel_count: chcount,
-        buffer_size: bufsize_per_channel,
-        channels,
-    }
+    debug!(
+        "Creating Mixer with {} Channels and bufsize of {} bytes",
+        chcount, bufsize_per_channel
+    );
+    (
+        OutputMixer {
+            channel_count: chcount,
+            buffer_size: bufsize_per_channel,
+            //inputs,
+            outputs,
+        },
+        InputMixer { inputs },
+    )
 }
 
 #[cfg(test)]
@@ -267,14 +302,14 @@ mod tests {
 
     #[test]
     fn test_mixer() {
-        let mut mixer = default_mixer(2, 8);
+        let (mut output, mut input) = default_mixer(2, 8);
 
-        for (ch, c) in mixer.channels.iter_mut().enumerate() {
-            c.input.try_push((ch + 1) as f32).unwrap();
+        for (ch, c) in input.inputs.iter_mut().enumerate() {
+            c.try_push((ch + 1) as f32).unwrap();
         }
 
         let mut master_buf = vec![0.0f32; 16];
-        mixer.mixdown(&mut master_buf);
+        output.mixdown(&mut master_buf);
 
         assert_eq!(&master_buf[..4], vec![1.0, 2.0, 0.0, 0.0]);
     }
