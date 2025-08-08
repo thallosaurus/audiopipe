@@ -66,7 +66,7 @@ impl StreamerConfig {
 
         Ok(Self {
             direction,
-            buffer_size: args.buffer_size.unwrap_or(1024),
+            buffer_size: args.buffer_size.unwrap_or(1024) as usize,
             send_stats: false,
             selected_channels: args.output_channels,
             port: args.port.unwrap_or(22222),
@@ -92,12 +92,13 @@ impl StreamerConfig {
             program_args: NewCliArgs {
                 //network_host: (),
                 device,
-                buffer_size: Some(buffer_size),
+                buffer_size: Some(buffer_size as u32),
                 port,
                 output_channels: selected_channels.clone(),
                 network_host,
                 audio_host,
                 verbose: Verbosity::new(0, 0),
+                samplerate: Some(44100),
                 //test: todo!(),
             },
         })

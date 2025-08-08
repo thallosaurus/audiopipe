@@ -49,7 +49,7 @@ pub enum UdpSenderCommands {
 const MAX_UDP_PACKET_LENGTH: usize = 65535;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-struct UdpAudioPacket {
+pub struct UdpAudioPacket {
     sequence: u64,
     timestamp: SystemTime,
     data: Vec<u8>,
@@ -64,6 +64,7 @@ pub struct NetworkUDPStats {
     pub dropped: usize,
 }
 
+#[deprecated]
 pub trait UdpStreamFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     fn construct_udp_stream(
         direction: Direction,

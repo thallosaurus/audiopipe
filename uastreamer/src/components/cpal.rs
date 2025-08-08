@@ -1,9 +1,8 @@
 use bytemuck::Pod;
 use cpal::{
-    ChannelCount, InputCallbackInfo, OutputCallbackInfo, Sample, Stream, StreamConfig,
-    traits::DeviceTrait,
+    traits::DeviceTrait, ChannelCount, InputCallbackInfo, OutputCallbackInfo, Sample, Stream, StreamConfig, SupportedStreamConfig
 };
-use log::warn;
+use log::{debug, warn};
 use ringbuf::{
     HeapCons, HeapProd,
     traits::{Observer, Producer},
@@ -21,9 +20,7 @@ use crate::{
     write_debug,
 };
 
-pub enum CpalError {
-    
-}
+pub enum CpalError {}
 
 pub enum CpalStatus {
     DidEnd,
@@ -37,6 +34,80 @@ pub struct CpalStats {
     pub requested: Option<usize>,
     pub input_info: Option<InputCallbackInfo>,
     pub output_info: Option<OutputCallbackInfo>,
+}
+
+pub fn select_input_device_config(
+    device: &cpal::Device,
+    requested_bufsize: u32,
+    requested_samplerate: u32,
+    chcount: usize,
+) -> SupportedStreamConfig {
+    let devs = device.supported_input_configs().unwrap().find(|x| {
+        let bsize = *x.buffer_size();
+        let bsize_match = match bsize {
+            cpal::SupportedBufferSize::Range { min, max } => {
+                min <= requested_bufsize && requested_bufsize <= max
+            }
+            cpal::SupportedBufferSize::Unknown => false,
+        };
+
+        debug!(
+            "min_sample_rate: {}, max_sample_rate: {}",
+            x.min_sample_rate().0,
+            x.max_sample_rate().0
+        );
+
+        return x.min_sample_rate().0 <= requested_samplerate
+            && x.max_sample_rate().0 >= requested_samplerate
+            && x.channels() >= chcount as u16;
+    });
+
+    println!("{:?}", devs);
+
+    match devs {
+        Some(d) => d
+            .with_sample_rate(cpal::SampleRate(requested_samplerate)),
+        None => device
+            .default_input_config()
+            .expect("failed loading default input config")
+    }
+}
+
+pub fn select_output_device_config(
+    device: &cpal::Device,
+    requested_bufsize: u32,
+    requested_samplerate: u32,
+    chcount: usize,
+) -> SupportedStreamConfig {
+    let devs = device.supported_output_configs().unwrap().find(|x| {
+        let bsize = *x.buffer_size();
+        let bsize_match = match bsize {
+            cpal::SupportedBufferSize::Range { min, max } => {
+                min <= requested_bufsize && requested_bufsize <= max
+            }
+            cpal::SupportedBufferSize::Unknown => false,
+        };
+
+        debug!(
+            "min_sample_rate: {}, max_sample_rate: {}",
+            x.min_sample_rate().0,
+            x.max_sample_rate().0
+        );
+
+        return x.min_sample_rate().0 <= requested_samplerate
+            && x.max_sample_rate().0 >= requested_samplerate
+            && x.channels() >= chcount as u16;
+    });
+
+    println!("{:?}", devs);
+
+    match devs {
+        Some(d) => d
+            .with_sample_rate(cpal::SampleRate(requested_samplerate)),
+        None => device
+            .default_output_config()
+            .expect("failed loading default output config"),
+    }
 }
 
 pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
@@ -190,10 +261,7 @@ pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 's
             consumed += 1;
         }
         if dropped > 0 {
-            warn!(
-                "OVERFLOW - Dropped {} Samples",
-                dropped
-            );
+            warn!("OVERFLOW - Dropped {} Samples", dropped);
         }
         udp_urge_channel.send(true).unwrap();
 
@@ -249,10 +317,7 @@ mod tests {
         mpsc::{Sender, channel},
     };
 
-    use ringbuf::{
-        HeapCons, HeapProd, HeapRb,
-        traits::Split,
-    };
+    use ringbuf::{HeapCons, HeapProd, HeapRb, traits::Split};
 
     use super::{CpalAudioFlow, CpalStats};
 

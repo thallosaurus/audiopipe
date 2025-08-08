@@ -6,11 +6,13 @@ use std::{
     time::Duration,
 };
 
+use cpal::{BufferSize, SampleFormat, SampleRate};
 use log::{debug, error, info, trace};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use crate::{components::udp::UdpError, config::StreamerConfig, Direction};
+use crate::{Direction, components::udp::UdpError, config::StreamerConfig};
 
 use super::{
     cpal::CpalStatus,
@@ -73,7 +75,12 @@ pub type TcpResult<T> = Result<T, TcpErrors>;
 /// It gets used when the two instances exchange data
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum TcpControlState {
+    #[deprecated]
     Connect,
+
+    /// SampleRate, BufferSize, ChannelCount
+    ConnectRequest(u32, u32, usize),
+    ConnectResponse(String, u16, usize),
     Endpoint(String, EndpointPayload),
     Ping,
     Disconnect,
@@ -89,7 +96,7 @@ pub struct EndpointPayload {
 /// This is the data that gets sent between two instances
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TcpControlPacket {
-    state: TcpControlState,
+    pub state: TcpControlState,
 }
 
 /// Contains methods that implement the tcp control functionality
@@ -247,7 +254,8 @@ pub trait TcpControlFlow {
                     TcpControlState::Endpoint(e, endpoint_payload) => {
                         // connect to receiver
                         info!("Connecting to port {}, Payload: {:?}", &e, endpoint_payload);
-                        let target = SocketAddr::from_str(e.as_str()).map_err(|e| TcpErrors::SocketAddrParseError(e))?;
+                        let target = SocketAddr::from_str(e.as_str())
+                            .map_err(|e| TcpErrors::SocketAddrParseError(e))?;
                         self.start_stream(streamer_config.clone(), target)?;
                     }
                     TcpControlState::Ping => todo!(),
@@ -261,6 +269,8 @@ pub trait TcpControlFlow {
                         todo!()
                     }
                     TcpControlState::Connect => todo!(),
+                    TcpControlState::ConnectRequest(_, _, _) => todo!(),
+                    TcpControlState::ConnectResponse(_, _, _) => todo!(),
                 }
             }
         }
@@ -295,9 +305,7 @@ pub trait TcpControlFlow {
 
         // Assign a random port for the new Stream
         //let mut stream = stream?;
-        let mut own_ip = stream
-            .local_addr()
-            .unwrap();
+        let mut own_ip = stream.local_addr().unwrap();
 
         let mut rng = rand::rng();
         let port = rng.random_range(30000..40000);
@@ -329,7 +337,6 @@ pub trait TcpControlFlow {
             if let Ok(size) = stream.peek(&mut framesize_buffer) {
                 let connection_packet = Self::read_from_stream(&mut stream)?;
                 match connection_packet.state {
-                    // If Receiver got a connect request
                     TcpControlState::Connect => {
                         let _streamer = self.start_stream(streamer_config.clone(), own_ip).unwrap();
 
@@ -356,6 +363,8 @@ pub trait TcpControlFlow {
                         error!("{}", e);
                         break;
                     }
+                    TcpControlState::ConnectRequest(_, _, _) => todo!(),
+                    TcpControlState::ConnectResponse(_, _, _) => todo!(),
                 }
             }
         }

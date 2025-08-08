@@ -51,7 +51,10 @@ pub struct NewCliArgs {
 
     /// Buffer Size
     #[arg(short, long)]
-    pub buffer_size: Option<usize>,
+    pub buffer_size: Option<u32>,
+
+    #[arg(short, long)]
+    pub samplerate: Option<u32>,
 
     /// Port to connect to
     #[arg(short)]
@@ -76,6 +79,7 @@ impl Default for NewCliArgs {
             output_channels: Default::default(),
             network_host: Default::default(),
             verbose: Verbosity::default(),
+            samplerate: todo!(),
             //test: ChannelMapping::default(),
         }
     }

@@ -7,3 +7,4 @@ pub mod control;
 pub mod cpal;
 
 pub mod udp;
+pub mod tokio;
