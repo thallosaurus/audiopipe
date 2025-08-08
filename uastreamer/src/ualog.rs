@@ -1,5 +1,6 @@
 use log::{Record, Metadata};
 
+#[deprecated]
 pub struct SimpleLogger;
 
 impl log::Log for SimpleLogger {

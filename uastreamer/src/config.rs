@@ -8,6 +8,7 @@ use cpal::{
 use crate::{Direction, args::NewCliArgs, search_device, search_for_host};
 
 #[derive(Clone, Debug)]
+#[deprecated]
 pub struct StreamerConfig {
     pub direction: Direction,
     //pub cpal_config: cpal::StreamConfig,

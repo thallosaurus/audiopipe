@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::Direction;
 
 #[derive(Debug)]
+#[deprecated]
 pub enum UdpError {
     BindFailed(io::Error),
     ConnectError(io::Error),

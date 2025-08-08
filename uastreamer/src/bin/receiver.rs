@@ -5,11 +5,8 @@ use cpal::{traits::{DeviceTrait, HostTrait, StreamTrait}, StreamConfig
 use log::{debug, info};
 use uastreamer::{
     args::NewCliArgs,
-    components::{
-        cpal::select_output_device_config,
-        tokio::{audio::setup_master_output, tcp::tcp_server},
-    },
-    search_device, search_for_host,
+    components::cpal::select_output_device_config,
+    search_device, search_for_host, comps::{self, audio::setup_master_output, tcp::tcp_server},
 };
 
 #[tokio::main]

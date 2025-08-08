@@ -60,6 +60,8 @@ pub mod components;
 
 pub mod ualog;
 
+pub mod comps;
+
 /// Defines the behavior of the stream
 ///
 /// Sender: Captures from an audio input stream and sends it over the network

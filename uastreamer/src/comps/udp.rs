@@ -10,7 +10,7 @@ use tokio::{
     task::JoinHandle,
 };
 
-use crate::components::tokio::audio::{GLOBAL_MASTER_INPUT, GLOBAL_MASTER_OUTPUT};
+use crate::comps::audio::{GLOBAL_MASTER_INPUT, GLOBAL_MASTER_OUTPUT};
 
 type UdpServerCommands = bool;
 type UdpClientCommands = bool;
@@ -190,14 +190,11 @@ pub async fn udp_client(
 }
 
 #[cfg(test)]
-mod tests {
-    
-
-    
-    
+mod tests {    
     use tokio::{net::UdpSocket, sync::mpsc};
 
-    use crate::components::tokio::udp::{udp_client, udp_server};
+    use crate::comps::udp::{udp_client, udp_server};
+
 
     #[tokio::test]
     async fn tcp_server_test() {

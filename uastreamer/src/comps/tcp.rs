@@ -6,18 +6,33 @@ use std::{
 
 use cpal::StreamConfig;
 use log::{debug, error, info, trace};
+use serde::{Deserialize, Serialize};
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
     sync::Mutex,
 };
 
-use crate::components::{
-    control::{TcpControlPacket, TcpControlState},
-    tokio::udp::{
-        UdpClientHandle, UdpServerHandle, start_audio_stream_client, start_audio_stream_server,
-    },
-};
+use crate::comps::udp::{start_audio_stream_client, start_audio_stream_server, UdpClientHandle, UdpServerHandle};
+
+/// This enum states the type of the tcp control packet.
+/// It gets used when the two instances exchange data
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+
+pub enum TokioTcpControlState {
+    /// SampleRate, BufferSize, ChannelCount
+    ConnectRequest(u32, u32, usize),
+    ConnectResponse(String, u16, usize),
+    Disconnect,
+    Error(String),
+    
+}
+
+/// This is the data that gets sent between two instances
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TokioTcpControlPacket {
+    pub state: TokioTcpControlState,
+}
 
 pub async fn tcp_server(
     sock_addr: &str,
@@ -48,36 +63,36 @@ pub async fn tcp_server(
 
                 let data = &buf[..n];
                 trace!("{:?}", data);
-                let json: Result<TcpControlPacket, serde_json::Error> = serde_json::from_slice(data);
+                let json: Result<TokioTcpControlPacket, serde_json::Error> =
+                    serde_json::from_slice(data);
                 debug!("{:?}", json);
 
                 if let Ok(json) = json {
                     match json.state {
-                        TcpControlState::ConnectRequest(smprt, bufsize, chcount) => {
+                        TokioTcpControlState::ConnectRequest(smprt, bufsize, chcount) => {
                             // open udp socket here
                             let connection_id = uuid::Uuid::new_v4();
                             let mut h = handles.lock().await;
                             let handle = start_audio_stream_server(smprt, bufsize, chcount).await;
                             let local_addr = handle.local_addr.clone();
                             h.insert(connection_id, handle);
-                            
+
                             info!("new udp connection id {}", connection_id);
-                            
-                            let connection_response = TcpControlPacket {
-                                state: TcpControlState::ConnectResponse(
+
+                            let connection_response = TokioTcpControlPacket {
+                                state: TokioTcpControlState::ConnectResponse(
                                     connection_id.to_string(),
                                     local_addr.port(),
-                                    channel_count
+                                    channel_count,
                                 ),
                             };
                             let json = serde_json::to_vec(&connection_response).unwrap();
-                            
+
                             if let Err(e) = socket.write_all(json.as_slice()).await {
-                                
                                 //remove connection from map
                                 let _ = h.remove(&connection_id);
                                 error!("r {}", e);
-                                break
+                                break;
                             }
                         }
                         _ => {
@@ -88,7 +103,7 @@ pub async fn tcp_server(
                     // eof probably
                     let err = json.err().unwrap();
                     error!("{}", err);
-                    break
+                    break;
                 }
 
                 #[cfg(test)]
@@ -113,8 +128,8 @@ pub async fn tcp_client(
     let mut stream = TcpStream::connect(target).await?;
     info!("Connected to server {}", target);
 
-    let packet = TcpControlPacket {
-        state: TcpControlState::ConnectRequest(
+    let packet = TokioTcpControlPacket {
+        state: TokioTcpControlState::ConnectRequest(
             config.sample_rate.0,
             max_buffer_size,
             channel_count,
@@ -134,16 +149,13 @@ pub async fn tcp_client(
             .expect("failed to read data from socket");
 
         let data = &buf[..n];
-        let json: TcpControlPacket = serde_json::from_slice(data).unwrap();
+        let json: TokioTcpControlPacket = serde_json::from_slice(data).unwrap();
         debug!("< Read Packet: {:?}", json);
         match json.state {
-            TcpControlState::Connect => todo!(),
-            TcpControlState::ConnectRequest(samplerate, buffersize, chcount) => {}
-            TcpControlState::Endpoint(_, endpoint_payload) => todo!(),
-            TcpControlState::Ping => todo!(),
-            TcpControlState::Disconnect => todo!(),
-            TcpControlState::Error(_) => todo!(),
-            TcpControlState::ConnectResponse(conn_id, port, chcount) => {
+            TokioTcpControlState::ConnectRequest(samplerate, buffersize, chcount) => {}
+            TokioTcpControlState::Disconnect => todo!(),
+            TokioTcpControlState::Error(_) => todo!(),
+            TokioTcpControlState::ConnectResponse(conn_id, port, chcount) => {
                 // TODO
                 let mut _h = handle.lock().await;
                 if _h.is_none() {
@@ -161,7 +173,6 @@ pub async fn tcp_client(
 
 #[cfg(test)]
 mod tests {
-    
 
     #[tokio::test]
     async fn test_client_server_handshake() {

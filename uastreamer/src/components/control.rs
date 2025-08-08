@@ -93,6 +93,7 @@ pub enum TcpControlState {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[deprecated]
 pub struct EndpointPayload {
     channels: u16,
     buffer_size: usize,
@@ -100,6 +101,7 @@ pub struct EndpointPayload {
 
 /// This is the data that gets sent between two instances
 #[derive(Serialize, Deserialize, Debug)]
+#[deprecated]
 pub struct TcpControlPacket {
     pub state: TcpControlState,
 }

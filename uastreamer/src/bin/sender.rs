@@ -6,7 +6,7 @@ use cpal::{
 use log::{debug, info};
 use uastreamer::{
     args::NewCliArgs,
-    components::{cpal::select_input_device_config, tokio::{audio::setup_master_input, tcp::tcp_client}}, search_device, search_for_host,
+    components::cpal::select_input_device_config, search_device, search_for_host,
 };
 
 #[tokio::main]
@@ -29,7 +29,7 @@ async fn main() {
     }
     .expect("no input device");
 
-    debug!("Supported Configs for Device {:?}", input_device.name());
+    /*debug!("Supported Configs for Device {:?}", input_device.name());
     for c in input_device.supported_input_configs().unwrap() {
         debug!(
             "BufferSize: {:?}, Channels: {}, Min Supported Sample Rate: {:?}, Max Supported Sample Rate: {:?}",
@@ -38,7 +38,7 @@ async fn main() {
             c.min_sample_rate(),
             c.max_sample_rate()
         );
-    }
+    }*/
 
     let bsize = cli.buffer_size.unwrap_or(1024);
     let srate = cli.samplerate.unwrap_or(44100);
@@ -65,13 +65,13 @@ async fn main() {
         sconfig.channels
     );
 
-    let master_stream = setup_master_input(input_device, &sconfig, max_bufsize as usize, vec![0, 1])
+    let master_stream = uastreamer::comps::audio::setup_master_input(input_device, &sconfig, max_bufsize as usize, vec![0, 1])
         .await
         .expect("couldn't build master output");
 
     master_stream.play().unwrap();
 
-    tcp_client("127.0.0.1", &sconfig, 2, max_bufsize)
+    uastreamer::comps::tcp::tcp_client("127.0.0.1", &sconfig, 2, max_bufsize)
         .await
         .unwrap();
 }

@@ -36,6 +36,7 @@ impl FromStr for ChannelMapping {
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about = format!("{} (v{})", PKG_NAME, VERSION), long_about = None)]
+#[deprecated]
 pub struct NewCliArgs {
     /// Name of the Audio Host - REQUIRED if you are the sender
     #[arg(short, long)]
