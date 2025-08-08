@@ -17,6 +17,7 @@ use super::{
     udp::{UdpReceiverCommands, UdpSenderCommands, UdpStatus},
 };
 
+#[deprecated]
 pub type StartedStream = (Sender<UdpStatus>, Sender<CpalStatus>);
 
 const MAX_TCP_PACKET_SIZE: usize = 65535;

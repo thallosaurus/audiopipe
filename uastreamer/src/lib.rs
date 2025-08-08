@@ -65,6 +65,7 @@ pub mod comps;
 /// Sender: Captures from an audio input stream and sends it over the network
 /// Receiver: Receives from the network and outputs it to a audio output stream
 #[derive(Debug, Clone, Copy)]
+#[deprecated]
 pub enum Direction {
     Sender,
     Receiver,

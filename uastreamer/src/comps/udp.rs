@@ -12,8 +12,12 @@ use tokio::{
 
 use crate::comps::audio::{GLOBAL_MASTER_INPUT, GLOBAL_MASTER_OUTPUT};
 
-type UdpServerCommands = bool;
-type UdpClientCommands = bool;
+pub enum UdpServerCommands {
+    Stop,
+}
+pub enum UdpClientCommands {
+    Stop,
+}
 
 pub struct UdpServerHandle {
     _handle: JoinHandle<()>,
@@ -23,7 +27,7 @@ pub struct UdpServerHandle {
 
 impl UdpServerHandle {
     async fn stop(&mut self) -> Result<(), SendError<UdpServerCommands>> {
-        self.channel.send(true).await
+        self.channel.send(UdpServerCommands::Stop).await
     }
 }
 
@@ -34,7 +38,7 @@ pub struct UdpClientHandle {
 
 impl UdpClientHandle {
     async fn stop(&mut self) -> Result<(), SendError<UdpClientCommands>> {
-        self.channel.send(true).await
+        self.channel.send(UdpClientCommands::Stop).await
     }
 }
 
@@ -90,7 +94,7 @@ pub async fn start_audio_stream_client(
 pub async fn udp_server(
     sock: UdpSocket,
     bufsize: u32,
-    mut ch: mpsc::Receiver<bool>,
+    mut ch: mpsc::Receiver<UdpServerCommands>,
 ) -> io::Result<()> {
     // start connection
     let mut buf = vec![0; 10000 as usize].into_boxed_slice();
@@ -101,7 +105,7 @@ pub async fn udp_server(
                 match result {
                     Ok((len, addr)) => {
                         //info!("Received {:?} bytes from {:?}, Payload: {:?}", len, addr, data);
-                        
+
                         trace!("UDP Packet Length: {:?}", len);
                         let packet: TokioUdpAudioPacket = bincode2::deserialize(&mut buf[..len]).unwrap();
                             //.map_err(|e| UdpError::DeserializeError(e)).unwrap();
@@ -111,9 +115,6 @@ pub async fn udp_server(
 
                         // decode packet
                         //info!("{:?}", String::from_utf8(data.to_vec()));
-
-                        #[cfg(test)]
-                        break
                     },
                     Err(e) => {
                         error!("recv error: {:?}", e);
@@ -121,8 +122,10 @@ pub async fn udp_server(
                 }
             },
 
-            c = ch.recv() => {
-                break
+            Some(cmd) = ch.recv() => {
+                match cmd {
+                    UdpServerCommands::Stop => break,
+                }
             },
         };
     }
@@ -158,7 +161,7 @@ const MAX_UDP_CLIENT_PAYLOAD_SIZE: usize = 512;
 pub async fn udp_client(
     sock: UdpSocket,
     bufsize: u32,
-    mut ch: mpsc::Receiver<bool>,
+    mut ch: mpsc::Receiver<UdpClientCommands>,
 ) -> io::Result<()> {
     let mut input = GLOBAL_MASTER_INPUT.lock().await;
     let mut sequence = 0;
@@ -177,9 +180,10 @@ pub async fn udp_client(
                 };
 
                 sequence += 1;
-                trace!("Sequence {}, consumed: {}, {:?}", sequence, consumed, packet);
-
-                //trace!("{:?}", packet);
+                trace!(
+                    "Sequence {}, consumed: {}, {:?}",
+                    sequence, consumed, packet
+                );
 
                 let set = bincode2::serialize(&packet).expect("error while serializing audio data");
 
@@ -187,13 +191,13 @@ pub async fn udp_client(
                     Ok(sent) = sock.send(&set) => {
                         trace!("Sent {} bytes", sent);
                     },
-                    Some(flag) = ch.recv() => {
-                        info!("Quitting UDP Client");
-                        break
+                    Some(cmd) = ch.recv() => {
+                        match cmd {
+                            UdpClientCommands::Stop => break,
+                        }
                     }
                 }
             }
-            //sock.send(cons).await;
         }
     }
 
@@ -201,11 +205,10 @@ pub async fn udp_client(
 }
 
 #[cfg(test)]
-mod tests {    
+mod tests {
     use tokio::{net::UdpSocket, sync::mpsc};
 
     use crate::comps::udp::{udp_client, udp_server};
-
 
     #[tokio::test]
     async fn tcp_server_test() {
@@ -230,8 +233,8 @@ mod tests {
         let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
         let c = udp_client(sock, 2, r).await.unwrap();
         /*c.send(String::from("Hello World").as_bytes())
-            .await
-            .unwrap();*/
+        .await
+        .unwrap();*/
         handle.await.unwrap();
     }
 }
