@@ -72,6 +72,7 @@ pub enum Direction {
     Receiver,
 }
 
+#[deprecated]
 /// Enumerate all available devices on the system
 pub fn enumerate(direction: Direction, host: &Host) -> anyhow::Result<()> {
     println!("Supported hosts:\n  {:?}", cpal::ALL_HOSTS);
