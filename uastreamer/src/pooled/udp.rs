@@ -294,7 +294,7 @@ mod tests {
         traits::{Observer, Producer, Split},
     };
 
-    use crate::{AppDebug, components::cpal::CpalStats};
+    use crate::{AppDebug, pooled::cpal::CpalStats};
 
     use super::{NetworkUDPStats, UdpStatus, UdpStreamFlow};
 

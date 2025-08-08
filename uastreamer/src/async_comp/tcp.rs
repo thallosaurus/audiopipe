@@ -13,7 +13,7 @@ use tokio::{
     sync::Mutex,
 };
 
-use crate::comps::udp::{start_audio_stream_client, start_audio_stream_server, UdpClientHandle, UdpServerHandle};
+use crate::async_comp::udp::{start_audio_stream_client, start_audio_stream_server, UdpClientHandle, UdpServerHandle};
 
 /// This enum states the type of the tcp control packet.
 /// It gets used when the two instances exchange data

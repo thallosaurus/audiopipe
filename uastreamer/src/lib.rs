@@ -12,7 +12,7 @@ use std::{
 
 use bytemuck::Pod;
 
-use components::{
+use pooled::{
     control::{TcpControlFlow, TcpErrors, TcpResult},
     cpal::{CpalAudioFlow, CpalStats, CpalStatus},
     udp::{NetworkUDPStats, UdpStatus, UdpStreamFlow},
@@ -53,11 +53,13 @@ pub mod splitter;
 pub mod config;
 
 /// Holds all flows this app offers
-pub mod components;
+pub mod pooled;
 
 pub mod ualog;
 
-pub mod comps;
+pub mod async_comp;
+
+pub mod cli;
 
 /// Defines the behavior of the stream
 ///

@@ -1,28 +1,27 @@
-use std::rc::Rc;
-
 use clap::Parser;
 use cpal::{
     StreamConfig,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
-use log::{debug, info};
+use log::info;
 use uastreamer::{
-    components::cpal::{select_input_device_config, select_output_device_config},
-    comps::{audio::setup_master_output, cli::Cli, tcp::tcp_server},
+    async_comp::{
+        audio::{select_input_device_config, select_output_device_config, setup_master_output},
+        tcp::tcp_server,
+    },
+    cli::{Cli, Commands},
     search_device, search_for_host,
 };
 
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
-    info!("Mode: {:?}, {:?}", cli.command, cli.global);
-
     env_logger::init();
 
     let bsize = cli.global.buffer_size.unwrap_or(1024);
     let srate = cli.global.samplerate.unwrap_or(44100);
     match cli.command {
-        uastreamer::comps::cli::Commands::Sender(sender_commands) => {
+        Commands::Sender(sender_commands) => {
             init_sender(
                 sender_commands.target,
                 cli.global.audio_host,
@@ -32,10 +31,10 @@ async fn main() {
             )
             .await
         }
-        uastreamer::comps::cli::Commands::Receiver => {
+        Commands::Receiver => {
             init_receiver(cli.global.audio_host, cli.global.device, bsize, srate).await
         }
-        uastreamer::comps::cli::Commands::EnumDevices => {
+        Commands::EnumDevices => {
             enumerate_devices(cli.global.audio_host, cli.global.device);
         }
     }
@@ -82,7 +81,7 @@ async fn init_sender(
         sconfig.channels
     );
 
-    let master_stream = uastreamer::comps::audio::setup_master_input(
+    let master_stream = uastreamer::async_comp::audio::setup_master_input(
         input_device,
         &sconfig,
         max_bufsize as usize,
@@ -91,10 +90,9 @@ async fn init_sender(
     .await
     .expect("couldn't build master output");
 
-
     master_stream.play().unwrap();
 
-    uastreamer::comps::tcp::tcp_client(&target, &sconfig, 2, max_bufsize)
+    uastreamer::async_comp::tcp::tcp_client(&target, &sconfig, 2, max_bufsize)
         .await
         .unwrap();
 }
@@ -184,7 +182,7 @@ fn enumerate_devices(audio_host: Option<String>, device_name: Option<String>) {
     }
 
     println!("");
-    
+
     println!("Supported Configs for Device {:?}", output_device.name());
     for c in output_device.supported_output_configs().unwrap() {
         println!(

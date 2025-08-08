@@ -1,11 +1,45 @@
+use std::str::FromStr;
+
 use clap::{Parser, Subcommand};
+
+pub enum ChannelMappingError {
+    InvalidStr,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ChannelMapping {
+    from: usize,
+    to: usize,
+}
+
+impl FromStr for ChannelMapping {
+    type Err = ChannelMappingError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let sp: Vec<&str> = s.split("=").collect();
+
+        let from = sp.get(0);
+        let to = sp.get(0);
+
+        match (from, to) {
+            (Some(from), Some(to)) => Ok(Self {
+                from: usize::from_str(*from).map_err(|e| ChannelMappingError::InvalidStr)?,
+                to: usize::from_str(*to).map_err(|e| ChannelMappingError::InvalidStr)?,
+            }),
+            _ => Err(ChannelMappingError::InvalidStr),
+        }
+    }
+}
 
 #[derive(Parser)]
 #[clap(name = "mycli")]
 pub struct Cli {
+
+    /// Enum that holds the subcommand
     #[structopt(subcommand)]
     pub command: Commands,
     
+    /// Options, that are globally valid
     #[clap(flatten)]
     pub global: GlobalOptions
 }

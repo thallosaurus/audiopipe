@@ -5,35 +5,6 @@ use clap_verbosity_flag::Verbosity;
 
 use crate::{PKG_NAME, VERSION};
 
-pub enum ChannelMappingError {
-    InvalidStr,
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ChannelMapping {
-    from: usize,
-    to: usize,
-}
-
-impl FromStr for ChannelMapping {
-    type Err = ChannelMappingError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let sp: Vec<&str> = s.split("=").collect();
-
-        let from = sp.get(0);
-        let to = sp.get(0);
-
-        match (from, to) {
-            (Some(from), Some(to)) => Ok(Self {
-                from: usize::from_str(*from).map_err(|e| ChannelMappingError::InvalidStr)?,
-                to: usize::from_str(*to).map_err(|e| ChannelMappingError::InvalidStr)?,
-            }),
-            _ => Err(ChannelMappingError::InvalidStr),
-        }
-    }
-}
-
 #[derive(Parser, Debug, Clone)]
 #[command(version, about = format!("{} (v{})", PKG_NAME, VERSION), long_about = None)]
 #[deprecated]

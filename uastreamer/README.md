@@ -5,7 +5,7 @@ A simple app that sends audio over the network with the aim of realtime, low-lat
 
 ### Sender
 ```
-Usage: cli_app [OPTIONS] <COMMAND>
+Usage: uastremer [OPTIONS] <COMMAND>
 
 Commands:
   sender    Start the application in sender mode

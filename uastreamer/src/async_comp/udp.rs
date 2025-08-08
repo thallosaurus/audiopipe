@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, time::SystemTime};
+use std::{net::SocketAddr, pin::Pin, time::SystemTime};
 
 use log::{error, info, trace};
 use ringbuf::traits::{Consumer, Observer, Producer};
@@ -10,7 +10,7 @@ use tokio::{
     task::JoinHandle,
 };
 
-use crate::comps::audio::{GLOBAL_MASTER_INPUT, GLOBAL_MASTER_OUTPUT};
+use crate::async_comp::audio::{GLOBAL_MASTER_INPUT, GLOBAL_MASTER_OUTPUT};
 
 pub enum UdpServerCommands {
     Stop,
@@ -20,24 +20,24 @@ pub enum UdpClientCommands {
 }
 
 pub struct UdpServerHandle {
-    _handle: JoinHandle<()>,
+    _handle: Pin<Box<dyn Future<Output = io::Result<()>> + Send>>,
     channel: mpsc::Sender<UdpServerCommands>,
     pub local_addr: SocketAddr,
 }
 
 impl UdpServerHandle {
-    async fn stop(&mut self) -> Result<(), SendError<UdpServerCommands>> {
+    async fn stop(&self) -> Result<(), SendError<UdpServerCommands>> {
         self.channel.send(UdpServerCommands::Stop).await
     }
 }
 
 pub struct UdpClientHandle {
-    _handle: JoinHandle<()>,
+    _handle: Pin<Box<dyn Future<Output = io::Result<()>> + Send>>,
     channel: mpsc::Sender<UdpClientCommands>,
 }
 
 impl UdpClientHandle {
-    async fn stop(&mut self) -> Result<(), SendError<UdpClientCommands>> {
+    async fn stop(&self) -> Result<(), SendError<UdpClientCommands>> {
         self.channel.send(UdpClientCommands::Stop).await
     }
 }
@@ -60,10 +60,9 @@ pub async fn start_audio_stream_server(
 
     let (s, r) = mpsc::channel(1);
     UdpServerHandle {
-        _handle: tokio::spawn(async move {
+        _handle: Box::pin(udp_server(sock, bufsize * chcount as u32, r))
             //info!("UDP Server Listening");
-            udp_server(sock, bufsize * chcount as u32, r).await.unwrap();
-        }),
+        ,
         channel: s,
         local_addr,
     }
@@ -82,11 +81,9 @@ pub async fn start_audio_stream_client(
 
     let (s, r) = mpsc::channel(1);
 
+    //info!("Starting UDP Sender");
     UdpClientHandle {
-        _handle: tokio::spawn(async move {
-            info!("Starting UDP Sender");
-            udp_client(sock, bufsize * chcount as u32, r).await.unwrap();
-        }),
+        _handle: Box::pin(udp_client(sock, bufsize * chcount as u32, r)),
         channel: s,
     }
 }
@@ -96,6 +93,7 @@ pub async fn udp_server(
     bufsize: u32,
     mut ch: mpsc::Receiver<UdpServerCommands>,
 ) -> io::Result<()> {
+    info!("Starting UDP Receiver");
     // start connection
     let mut buf = vec![0; 10000 as usize].into_boxed_slice();
 
@@ -163,6 +161,7 @@ pub async fn udp_client(
     bufsize: u32,
     mut ch: mpsc::Receiver<UdpClientCommands>,
 ) -> io::Result<()> {
+    info!("Starting UDP Sender");
     let mut input = GLOBAL_MASTER_INPUT.lock().await;
     let mut sequence = 0;
     loop {
@@ -206,9 +205,11 @@ pub async fn udp_client(
 
 #[cfg(test)]
 mod tests {
-    use tokio::{net::UdpSocket, sync::mpsc};
+    use std::sync::Arc;
 
-    use crate::comps::udp::{udp_client, udp_server};
+    use tokio::{net::UdpSocket, sync::{mpsc, Mutex}};
+
+    use crate::async_comp::udp::{start_audio_stream_server, udp_client, udp_server};
 
     #[tokio::test]
     async fn tcp_server_test() {
@@ -236,5 +237,10 @@ mod tests {
         .await
         .unwrap();*/
         handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_server_handle_stop() {
+        let server = Arc::new(Mutex::new(start_audio_stream_server(44100, 1024, 2).await));
     }
 }
