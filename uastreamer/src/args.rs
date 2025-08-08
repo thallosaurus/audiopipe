@@ -1,4 +1,3 @@
-use std::str::FromStr;
 
 use clap::Parser;
 use clap_verbosity_flag::Verbosity;

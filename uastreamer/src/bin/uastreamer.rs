@@ -173,7 +173,7 @@ fn enumerate_devices(audio_host: Option<String>, device_name: Option<String>) {
     println!("Supported Configs for Device {:?}", input_device.name());
     for c in input_device.supported_input_configs().unwrap() {
         println!(
-            "BufferSize: {:?}, Channels: {}, Min Supported Sample Rate: {:?}, Max Supported Sample Rate: {:?}",
+            "- BufferSize: {:?}, Channels: {}, Min Supported Sample Rate: {}, Max Supported Sample Rate: {}",
             c.buffer_size(),
             c.channels(),
             c.min_sample_rate().0,
@@ -186,7 +186,7 @@ fn enumerate_devices(audio_host: Option<String>, device_name: Option<String>) {
     println!("Supported Configs for Device {:?}", output_device.name());
     for c in output_device.supported_output_configs().unwrap() {
         println!(
-            "- BufferSize: {:?}, Channels: {}, Min Supported Sample Rate: {:?}, Max Supported Sample Rate: {:?}",
+            "- BufferSize: {:?}, Channels: {}, Min Supported Sample Rate: {}, Max Supported Sample Rate: {}",
             c.buffer_size(),
             c.channels(),
             c.min_sample_rate().0,

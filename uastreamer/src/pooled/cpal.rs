@@ -1,8 +1,8 @@
 use bytemuck::Pod;
 use cpal::{
-    traits::DeviceTrait, ChannelCount, InputCallbackInfo, OutputCallbackInfo, Sample, Stream, StreamConfig, SupportedStreamConfig
+    traits::DeviceTrait, ChannelCount, InputCallbackInfo, OutputCallbackInfo, Sample, Stream, StreamConfig
 };
-use log::{debug, warn};
+use log::warn;
 use ringbuf::{
     HeapCons, HeapProd,
     traits::Producer,

@@ -7,7 +7,6 @@ use tokio::{
     io::{self},
     net::UdpSocket,
     sync::mpsc::{self, error::SendError},
-    task::JoinHandle,
 };
 
 use crate::async_comp::audio::{GLOBAL_MASTER_INPUT, GLOBAL_MASTER_OUTPUT};

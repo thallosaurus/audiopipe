@@ -2,7 +2,6 @@ use cpal::{
     BuildStreamError, Device, InputCallbackInfo, Sample, Stream, StreamConfig,
     SupportedStreamConfig, traits::DeviceTrait,
 };
-use crossbeam::channel;
 use log::{debug, trace, warn};
 use once_cell::sync::Lazy;
 use ringbuf::{
@@ -11,7 +10,7 @@ use ringbuf::{
 };
 use tokio::sync::Mutex;
 
-use crate::splitter::{ChannelMerger, ChannelSplitter};
+use crate::splitter::ChannelSplitter;
 
 // TODO: Replace with the master mixer
 pub static GLOBAL_MASTER_OUTPUT: Lazy<Mutex<Option<HeapProd<f32>>>> =
@@ -97,7 +96,7 @@ pub async fn setup_master_output(
     selected_channels: Vec<usize>,
 ) -> Result<Stream, BuildStreamError> {
     let rbuf = HeapRb::<f32>::new(bsize * config.channels as usize);
-    let (prod, mut cons) = rbuf.split();
+    let (prod, cons) = rbuf.split();
 
     let mut master_out = GLOBAL_MASTER_OUTPUT.lock().await;
     *master_out = Some(prod);
