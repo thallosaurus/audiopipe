@@ -20,6 +20,7 @@ pub struct StreamerConfig {
     pub program_args: NewCliArgs,
 }
 
+#[deprecated]
 pub fn get_cpal_config(
     direction: Direction,
     audio_host: Option<String>,

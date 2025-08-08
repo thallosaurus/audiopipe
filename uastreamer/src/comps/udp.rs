@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tokio::{
     io::{self},
     net::UdpSocket,
-    sync::mpsc,
+    sync::mpsc::{self, error::SendError},
     task::JoinHandle,
 };
 
@@ -21,9 +21,21 @@ pub struct UdpServerHandle {
     pub local_addr: SocketAddr,
 }
 
+impl UdpServerHandle {
+    async fn stop(&mut self) -> Result<(), SendError<UdpServerCommands>> {
+        self.channel.send(true).await
+    }
+}
+
 pub struct UdpClientHandle {
     _handle: JoinHandle<()>,
     channel: mpsc::Sender<UdpClientCommands>,
+}
+
+impl UdpClientHandle {
+    async fn stop(&mut self) -> Result<(), SendError<UdpClientCommands>> {
+        self.channel.send(true).await
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -82,7 +94,6 @@ pub async fn udp_server(
 ) -> io::Result<()> {
     // start connection
     let mut buf = vec![0; 10000 as usize].into_boxed_slice();
-    //let mut temp_network_buffer = vec![0u8; MAX_UDP_PACKET_LENGTH].into_boxed_slice();
 
     loop {
         tokio::select! {

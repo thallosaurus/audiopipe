@@ -43,9 +43,6 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Re-export of the Cargo Package Description
 pub const PKG_DESC: &str = env!("CARGO_PKG_DESCRIPTION");
 
-/// Holds all things related to the statistics debug window
-pub mod tui;
-
 /// Holds everything needed for command line argument parsing
 pub mod args;
 
@@ -56,6 +53,7 @@ pub mod splitter;
 pub mod config;
 
 /// Holds all flows this app offers
+#[deprecated]
 pub mod components;
 
 pub mod ualog;
