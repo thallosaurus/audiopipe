@@ -140,7 +140,7 @@ async fn init_receiver(
         chcount
     );
 
-    let mut mixer = default_mixer(chcount as usize, bsize as usize);
+    let mixer = default_mixer(chcount as usize, bsize as usize);
 
     let master_stream =
         setup_master_output(output_device, sconfig, vec![0, 1], mixer.0)

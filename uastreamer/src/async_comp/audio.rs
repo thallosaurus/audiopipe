@@ -4,7 +4,7 @@ use cpal::{
     BuildStreamError, Device, InputCallbackInfo, Sample, Stream, StreamConfig,
     SupportedStreamConfig, traits::DeviceTrait,
 };
-use log::{debug, trace, warn};
+use log::{debug, warn};
 use once_cell::sync::Lazy;
 use ringbuf::{
     HeapCons, HeapProd, HeapRb,
@@ -113,7 +113,7 @@ pub async fn setup_master_output(
         &config,
         move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
             //trace!("Callback wants {:?} ", data.len());
-            let mut m = mixer.clone();
+            let m = mixer.clone();
 
             let consumed = m.lock().expect("mixer not available").mixdown(data);
             //trace!("Consumed: {}", consumed);

@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, pin::Pin, sync::Arc, time::SystemTime};
+use std::{net::SocketAddr, pin::Pin, time::SystemTime};
 
 use log::{error, info, trace};
 use ringbuf::traits::{Consumer, Observer, Producer};
@@ -6,13 +6,10 @@ use serde::{Deserialize, Serialize};
 use tokio::{
     io::{self},
     net::UdpSocket,
-    sync::{
-        Mutex,
-        mpsc::{self, error::SendError},
-    },
+    sync::mpsc::{self, error::SendError},
 };
 
-use crate::async_comp::audio::{GLOBAL_MASTER_INPUT, InputMixer, SharedInputMixer};
+use crate::async_comp::audio::{GLOBAL_MASTER_INPUT, SharedInputMixer};
 
 pub enum UdpServerCommands {
     Stop,
