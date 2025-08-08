@@ -72,6 +72,16 @@ async fn init_sender(
 
     let sconfig: StreamConfig = config.into();
 
+    info!(
+        "Using Audio Device {}, Sample Rate: {}, Buffer Size: {:?}, Channel Count: {}",
+        input_device
+            .name()
+            .unwrap_or("Unknown Device Name".to_string()),
+        sconfig.sample_rate.0,
+        sconfig.buffer_size,
+        sconfig.channels
+    );
+
     let master_stream = uastreamer::comps::audio::setup_master_input(
         input_device,
         &sconfig,
@@ -80,6 +90,7 @@ async fn init_sender(
     )
     .await
     .expect("couldn't build master output");
+
 
     master_stream.play().unwrap();
 
@@ -107,17 +118,6 @@ async fn init_receiver(
         None => audio_host.default_output_device(),
     }
     .expect("no output device");
-
-    /*debug!("Supported Configs for Device {:?}", output_device.name());
-    for c in output_device.supported_output_configs().unwrap() {
-        debug!(
-            "BufferSize: {:?}, Channels: {}, Min Supported Sample Rate: {:?}, Max Supported Sample Rate: {:?}",
-            c.buffer_size(),
-            c.channels(),
-            c.min_sample_rate(),
-            c.max_sample_rate()
-        );
-    }*/
 
     let config = select_output_device_config(&output_device, bsize, srate, 2);
     let bs = *config.buffer_size();

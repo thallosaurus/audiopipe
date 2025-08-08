@@ -5,34 +5,18 @@ A simple app that sends audio over the network with the aim of realtime, low-lat
 
 ### Sender
 ```
-uastreamer (v0.2.2)
+Usage: cli_app [OPTIONS] <COMMAND>
 
-Usage: sender [OPTIONS]
-
-Options:
-  -n, --network-host <NETWORK_HOST>  Name of the Audio Host
-  -a, --audio-host <AUDIO_HOST>      Name of the Audio Host
-  -d, --device <DEVICE>              Name of the used Audio Device
-  -b, --buffer-size <BUFFER_SIZE>    Buffer Size
-  -p <PORT>                          Port to connect to
-  -c <OUTPUT_CHANNELS>               Selects the tracks to which the app will push data to
-  -h, --help                         Print help
-  -V, --version                      Print version
-```
-
-### Receiver
-```
-uastreamer (v0.2.2)
-
-Usage: receiver [OPTIONS]
+Commands:
+  sender    Start the application in sender mode
+  receiver  Start the application in receiver mode
+  devices   Enumerate audio device hardware
+  help      Print this message or the help of the given subcommand(s)
 
 Options:
-  -n, --network-host <NETWORK_HOST>  Name of the Audio Host
-  -a, --audio-host <AUDIO_HOST>      Name of the Audio Host
-  -d, --device <DEVICE>              Name of the used Audio Device
-  -b, --buffer-size <BUFFER_SIZE>    Buffer Size
-  -p <PORT>                          Port to connect to
-  -c <OUTPUT_CHANNELS>               Selects the tracks to which the app will push data to
-  -h, --help                         Print help
-  -V, --version                      Print version
+  -a, --audio-host <AUDIO_HOST>    Name of the Audio Host to be used (default: Use system default)
+  -d, --device <DEVICE>            Name of the Audio Device to be used (default: Use system default)
+  -b, --buffer-size <BUFFER_SIZE>  Requested Buffer Size
+  -s, --samplerate <SAMPLERATE>    Requested Sample Rate
+  -h, --help                       Print help
 ```

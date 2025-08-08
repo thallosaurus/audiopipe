@@ -53,7 +53,6 @@ pub mod splitter;
 pub mod config;
 
 /// Holds all flows this app offers
-#[deprecated]
 pub mod components;
 
 pub mod ualog;
