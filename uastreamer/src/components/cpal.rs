@@ -20,14 +20,17 @@ use crate::{
     write_debug,
 };
 
+#[deprecated]
 pub enum CpalError {}
 
+#[deprecated]
 pub enum CpalStatus {
     DidEnd,
 }
 
 /// Stats which get sent during each CPAL Callback Invocation after the main action is done
 #[derive(Default)]
+#[deprecated]
 pub struct CpalStats {
     //pub requested_sample_length: usize,
     pub consumed: Option<usize>,
@@ -50,7 +53,7 @@ pub fn select_input_device_config(
             }
             cpal::SupportedBufferSize::Unknown => false,
         };
-
+        
         debug!(
             "min_sample_rate: {}, max_sample_rate: {}",
             x.min_sample_rate().0,
@@ -110,6 +113,7 @@ pub fn select_output_device_config(
     }
 }
 
+#[deprecated]
 pub trait CpalAudioFlow<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     fn get_cpal_stats_sender(&self) -> Sender<CpalStats>;
 

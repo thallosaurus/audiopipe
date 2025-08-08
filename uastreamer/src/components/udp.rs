@@ -30,18 +30,22 @@ pub enum UdpError {
     CouldNotDeactivateTimeout(io::Error),
 }
 
+#[deprecated]
 pub type UdpResult<T> = Result<T, UdpError>;
 
+#[deprecated]
 pub enum UdpStatus {
     DidEnd,
 }
 
 #[derive(Debug)]
+#[deprecated]
 pub enum UdpReceiverCommands {
     Stop,
 }
 
 #[derive(Debug)]
+#[deprecated]
 pub enum UdpSenderCommands {
     Stop,
 }
@@ -49,6 +53,7 @@ pub enum UdpSenderCommands {
 const MAX_UDP_PACKET_LENGTH: usize = 65535;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[deprecated]
 pub struct UdpAudioPacket {
     sequence: u64,
     timestamp: SystemTime,
@@ -57,6 +62,7 @@ pub struct UdpAudioPacket {
 
 /// Stats which get sent after each UDP Event
 #[derive(Default)]
+#[deprecated]
 pub struct NetworkUDPStats {
     //pub sent: Option<usize>,
     //pub received: Option<usize>,

@@ -22,6 +22,7 @@ pub type StartedStream = (Sender<UdpStatus>, Sender<CpalStatus>);
 const MAX_TCP_PACKET_SIZE: usize = 65535;
 
 #[derive(Debug)]
+#[deprecated]
 pub enum TcpErrors {
     ConstructStreamError,
     ConnectError(io::Error),
@@ -67,11 +68,13 @@ impl ToString for TcpErrors {
 }
 
 /// Shortcut for `Result<T, TcpErrors>``
+#[deprecated]
 pub type TcpResult<T> = Result<T, TcpErrors>;
 
 /// This enum states the type of the tcp control packet.
 /// It gets used when the two instances exchange data
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
+
 pub enum TcpControlState {
     #[deprecated]
     Connect,
@@ -79,10 +82,14 @@ pub enum TcpControlState {
     /// SampleRate, BufferSize, ChannelCount
     ConnectRequest(u32, u32, usize),
     ConnectResponse(String, u16, usize),
-    Endpoint(String, EndpointPayload),
-    Ping,
     Disconnect,
     Error(String),
+
+    #[deprecated]
+    Endpoint(String, EndpointPayload),
+    #[deprecated]
+    Ping,
+    
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -105,6 +112,7 @@ pub struct TcpControlPacket {
 /// On the receiver side, it waits for a [TcpControlState::Connect], starts
 /// the Stream and sends back an [TcpControlState::Endpoint] Packet containing
 /// the Port for the started stream.
+#[deprecated]
 pub trait TcpControlFlow {
     /// Helper function to create a new TcpListener
     fn create_new_tcp_listener(addr: SocketAddr) -> TcpResult<TcpListener> {
