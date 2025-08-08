@@ -193,6 +193,7 @@ pub fn write_debug<T: cpal::SizedSample + Send + Pod + Default + 'static>(
 }
 
 /// Struct that holds everything the library needs
+#[deprecated]
 pub struct App<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     audio_buffer_prod: Arc<Mutex<HeapProd<T>>>,
     audio_buffer_cons: Arc<Mutex<HeapCons<T>>>,
@@ -241,6 +242,7 @@ where
     }
 }
 
+#[deprecated]
 pub struct AppDebug {
     cpal_stats_receiver: Receiver<CpalStats>,
     udp_stats_receiver: Receiver<NetworkUDPStats>,
