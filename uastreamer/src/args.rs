@@ -1,7 +1,7 @@
-use std::{num::ParseIntError, str::FromStr};
+use std::str::FromStr;
 
 use clap::Parser;
-use clap_verbosity_flag::{InfoLevel, Verbosity};
+use clap_verbosity_flag::Verbosity;
 
 use crate::{PKG_NAME, VERSION};
 

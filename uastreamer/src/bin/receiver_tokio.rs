@@ -1,13 +1,12 @@
-use std::io::Read;
 
 use clap::Parser;
-use cpal::{traits::{DeviceTrait, HostTrait, StreamTrait}, BufferSize, StreamConfig
+use cpal::{traits::{DeviceTrait, HostTrait, StreamTrait}, StreamConfig
 };
-use log::{debug, info, trace};
+use log::{debug, info};
 use uastreamer::{
     args::NewCliArgs,
     components::{
-        cpal::{select_input_device_config, select_output_device_config},
+        cpal::select_output_device_config,
         tokio::{audio::setup_master_output, tcp::tcp_server},
     },
     search_device, search_for_host,

@@ -5,7 +5,7 @@ use cpal::{
 use log::{debug, warn};
 use ringbuf::{
     HeapCons, HeapProd,
-    traits::{Observer, Producer},
+    traits::Producer,
 };
 use std::{
     fmt::Debug,

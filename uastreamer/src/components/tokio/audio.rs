@@ -1,7 +1,7 @@
 use cpal::{
     BuildStreamError, Device, InputCallbackInfo, Sample, Stream, StreamConfig, traits::DeviceTrait,
 };
-use log::{trace, warn};
+use log::warn;
 use once_cell::sync::Lazy;
 use ringbuf::{traits::{Producer, Split}, HeapCons, HeapProd, HeapRb};
 use tokio::sync::Mutex;

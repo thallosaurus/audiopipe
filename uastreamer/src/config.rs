@@ -1,5 +1,5 @@
 use clap::Parser;
-use clap_verbosity_flag::{Verbosity, VerbosityFilter};
+use clap_verbosity_flag::Verbosity;
 use cpal::{
     Device, StreamConfig,
     traits::{DeviceTrait, HostTrait},

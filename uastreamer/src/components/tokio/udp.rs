@@ -1,30 +1,16 @@
 use std::{net::SocketAddr, time::SystemTime};
 
-use cpal::{Device, Stream, traits::DeviceTrait};
-use log::{debug, error, info, trace};
-use rand::seq;
-use ringbuf::{
-    HeapCons, HeapProd, HeapRb,
-    traits::{Consumer, Observer, Producer, Split},
-};
+use log::{error, info, trace};
+use ringbuf::traits::{Consumer, Observer, Producer};
 use serde::{Deserialize, Serialize};
 use tokio::{
-    io::{self, AsyncReadExt},
-    net::{TcpListener, UdpSocket},
-    select,
+    io::{self},
+    net::UdpSocket,
     sync::mpsc,
     task::JoinHandle,
 };
 
-use crate::{
-    components::{
-        control::TcpControlPacket,
-        cpal::select_output_device_config,
-        tokio::audio::{GLOBAL_MASTER_INPUT, GLOBAL_MASTER_OUTPUT},
-        udp::{UdpAudioPacket, UdpError},
-    },
-    ualog::SimpleLogger,
-};
+use crate::components::tokio::audio::{GLOBAL_MASTER_INPUT, GLOBAL_MASTER_OUTPUT};
 
 type UdpServerCommands = bool;
 type UdpClientCommands = bool;
@@ -205,10 +191,10 @@ pub async fn udp_client(
 
 #[cfg(test)]
 mod tests {
-    use std::os;
+    
 
-    use crossbeam::channel;
-    use ringbuf::{HeapProd, HeapRb, rb, traits::Split};
+    
+    
     use tokio::{net::UdpSocket, sync::mpsc};
 
     use crate::components::tokio::udp::{udp_client, udp_server};

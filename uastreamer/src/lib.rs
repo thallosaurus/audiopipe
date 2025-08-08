@@ -2,8 +2,7 @@ use std::{
     fmt::Debug,
     fs::{File, create_dir_all},
     io::BufWriter,
-    net::{IpAddr, SocketAddr},
-    str::FromStr,
+    net::SocketAddr,
     sync::{
         Arc, Mutex,
         mpsc::{self, Receiver, Sender, channel},
@@ -14,7 +13,7 @@ use std::{
 use bytemuck::Pod;
 
 use components::{
-    control::{StartedStream, TcpControlFlow, TcpErrors, TcpResult},
+    control::{TcpControlFlow, TcpErrors, TcpResult},
     cpal::{CpalAudioFlow, CpalStats, CpalStatus},
     udp::{NetworkUDPStats, UdpStatus, UdpStreamFlow},
 };
@@ -22,13 +21,12 @@ use cpal::{traits::*, *};
 use hound::WavWriter;
 
 use config::{StreamerConfig, get_cpal_config};
-use log::{debug, error, info, set_logger};
+use log::{debug, error, info};
 use ringbuf::{
     HeapCons, HeapProd,
     traits::{Observer, Split},
 };
 use threadpool::ThreadPool;
-use ualog::SimpleLogger;
 
 /// Default Port if none is specified
 pub const DEFAULT_PORT: u16 = 42069;

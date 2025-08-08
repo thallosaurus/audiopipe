@@ -10,7 +10,7 @@ use std::{
 };
 
 use bytemuck::{Pod, PodCastError};
-use log::{debug, error, info, trace};
+use log::{info, trace};
 use ringbuf::{
     HeapCons, HeapProd,
     traits::{Consumer, Observer, Producer},

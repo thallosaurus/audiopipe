@@ -1,15 +1,12 @@
-use std::sync::mpsc::Sender;
 
 use clap::Parser;
 use cpal::{
-    traits::{DeviceTrait, HostTrait, StreamTrait}, StreamConfig, SupportedInputConfigs, SupportedStreamConfig
+    traits::{DeviceTrait, HostTrait, StreamTrait}, StreamConfig
 };
-use log::{debug, error, info};
+use log::{debug, info};
 use uastreamer::{
     args::NewCliArgs,
-    components::{cpal::select_input_device_config, tokio::{audio::setup_master_input, tcp::tcp_client}},
-    config::{get_cpal_config, StreamerConfig},
-    enumerate, search_device, search_for_host,
+    components::{cpal::select_input_device_config, tokio::{audio::setup_master_input, tcp::tcp_client}}, search_device, search_for_host,
 };
 
 #[tokio::main]

@@ -6,13 +6,11 @@ use std::{
     time::Duration,
 };
 
-use cpal::{BufferSize, SampleFormat, SampleRate};
 use log::{debug, error, info, trace};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
-use crate::{Direction, components::udp::UdpError, config::StreamerConfig};
+use crate::{Direction, config::StreamerConfig};
 
 use super::{
     cpal::CpalStatus,
@@ -377,7 +375,7 @@ pub trait TcpControlFlow {
 mod tests {
     use std::{
         net::SocketAddr,
-        sync::mpsc::{Sender, channel},
+        sync::mpsc::channel,
         time::Duration,
     };
 
@@ -386,11 +384,10 @@ mod tests {
     use crate::{
         Direction,
         args::NewCliArgs,
-        components::{cpal::CpalStatus, udp::UdpStatus},
         config::StreamerConfig,
     };
 
-    use super::{StartedStream, TcpControlFlow, TcpErrors, UdpReceiverCommands, UdpSenderCommands};
+    use super::{TcpControlFlow, TcpErrors, UdpReceiverCommands, UdpSenderCommands};
 
     struct TcpCommunication {}
     impl TcpControlFlow for TcpCommunication {
