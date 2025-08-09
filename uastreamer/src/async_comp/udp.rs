@@ -10,7 +10,7 @@ use tokio::{
     task::JoinHandle,
 };
 
-use crate::async_comp::{audio::GLOBAL_MASTER_INPUT, mixer::{MixerTrack}};
+use crate::async_comp::{audio::GLOBAL_MASTER_INPUT, mixer::MixerTrack};
 
 pub enum UdpServerCommands {
     Stop,
@@ -31,9 +31,8 @@ impl UdpServerHandle {
         self.channel.send(UdpServerCommands::Stop).await
     }
 
-    pub async fn start_audio_stream_server(
-        ch: MixerTrack,
-    ) -> UdpServerHandle {
+    pub async fn start_audio_stream_server(ch: MixerTrack) -> UdpServerHandle
+    {
         let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
         let local_addr = sock.local_addr().unwrap();
         info!("local udp addr: {}", local_addr);
@@ -138,10 +137,7 @@ pub async fn udp_server(
 /// Function that gets called when the udp socket received a new AudioPacket
 ///
 /// Writes to the master mixer
-async fn process_udp_server_output(
-    packet: TokioUdpAudioPacket,
-    channel: &MixerTrack,
-) {
+async fn process_udp_server_output(packet: TokioUdpAudioPacket, channel: &MixerTrack) {
     // Convert the buffered network samples to the specified sample format
     let converted_samples: &[f32] = bytemuck::try_cast_slice(&packet.data).unwrap();
     //.map_err(|e| UdpError::CastingError(e))?;
@@ -153,32 +149,31 @@ async fn process_udp_server_output(
     match channel {
         MixerTrack::Mono(mutex) => todo!(),
         MixerTrack::Stereo(l, r) => {
-
             let mut b = 0;
-            
+
             //let mut mixer = mixer.lock().await;
             //mixer.get_channel(channel)
-            
+
             for &sample in converted_samples {
                 // TODO implement fell-behind logic here
                 let ch_selector = b % packet.channels.len();
-                
+
                 let mut c;
                 if ch_selector == 0 {
                     c = l.lock().await;
                 } else {
                     c = r.lock().await;
                 }
-                
+
                 if let Err(err) = c.try_push(sample) {
                     dropped += 1;
                 } else {
                     consumed += 1;
                 }
-                
+
                 b += 1;
             }
-        },
+        }
     }
 }
 
@@ -242,8 +237,8 @@ mod tests {
     };
 
     use crate::async_comp::{
-
-        mixer::{default_mixer, MixerTrackSelector}, udp::{udp_client, udp_server}
+        mixer::{MixerTrackSelector, default_mixer},
+        udp::{udp_client, udp_server},
     };
 
     #[tokio::test]
@@ -267,7 +262,7 @@ mod tests {
 
             let mut mixer_lock = input_mixer.lock().await;
 
-            if let Ok(channels) = mixer_lock.get_channel(MixerTrackSelector::Stereo(0, 1)) {                
+            if let Ok(channels) = mixer_lock.get_channel(MixerTrackSelector::Stereo(0, 1)) {
                 udp_server(sock, r, channels).await.unwrap();
             }
             println!("Server stopped");

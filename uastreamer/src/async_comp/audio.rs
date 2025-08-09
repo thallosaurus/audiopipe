@@ -14,8 +14,6 @@ use tokio::sync::Mutex;
 
 use crate::{async_comp::mixer::{CombinedMixer, InputMixer}, splitter::ChannelSplitter};
 
-// TODO: Replace with the master mixer
-//pub static GLOBAL_MASTER_OUTPUT: Lazy<Mutex<Option<HeapProd<f32>>>> = Lazy::new(|| Mutex::new(None));
 pub static GLOBAL_MASTER_OUTPUT_MIXER: Lazy<Arc<Mutex<Option<InputMixer>>>> =
     Lazy::new(|| Arc::new(Mutex::new(None)));
 
