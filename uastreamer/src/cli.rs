@@ -52,7 +52,7 @@ pub enum Commands {
 
     /// Start the application in receiver mode
     #[clap(name = "receiver")]
-    Receiver,
+    Receiver(ReceiverCommands),
 
     /// Enumerate audio device hardware
     #[clap(name = "devices")]
@@ -62,6 +62,11 @@ pub enum Commands {
 #[derive(Parser, Debug)]
 pub struct SenderCommands {
     pub target: String,
+}
+
+#[derive(Parser, Debug)]
+pub struct ReceiverCommands {
+    pub addr: Option<String>
 }
 
 #[derive(Parser, Debug)]

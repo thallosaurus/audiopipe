@@ -6,7 +6,10 @@ use cpal::{
 use log::info;
 use uastreamer::{
     async_comp::{
-        audio::{default_mixer, select_input_device_config, select_output_device_config, setup_master_output},
+        audio::{
+            default_mixer, select_input_device_config, select_output_device_config,
+            setup_master_output,
+        },
         tcp::tcp_server,
     },
     cli::{Cli, Commands},
@@ -31,8 +34,8 @@ async fn main() {
             )
             .await
         }
-        Commands::Receiver => {
-            init_receiver(cli.global.audio_host, cli.global.device, bsize, srate).await
+        Commands::Receiver(recv_commands) => {
+            init_receiver(cli.global.audio_host, cli.global.device, bsize, srate, recv_commands.addr).await
         }
         Commands::EnumDevices => {
             enumerate_devices(cli.global.audio_host, cli.global.device);
@@ -102,6 +105,7 @@ async fn init_receiver(
     device_name: Option<String>,
     bsize: u32,
     srate: u32,
+    addr: Option<String>,
 ) {
     let audio_host = match audio_host {
         Some(h) => search_for_host(&h).unwrap(),
@@ -142,15 +146,13 @@ async fn init_receiver(
 
     let mixer = default_mixer(chcount as usize, bsize as usize);
 
-    let master_stream =
-        setup_master_output(output_device, sconfig, vec![0, 1], mixer.0)
-            .await
-            .expect("couldn't build master output");
+    let master_stream = setup_master_output(output_device, sconfig, vec![0, 1], mixer.0)
+        .await
+        .expect("couldn't build master output");
 
     master_stream.play().unwrap();
-
-    // TODO add receiving address
-    tcp_server("0.0.0.0", chcount.into()).await.unwrap();
+    
+    tcp_server(addr.unwrap_or("0.0.0.0".to_string()), chcount.into()).await.unwrap();
 }
 
 fn enumerate_devices(audio_host: Option<String>, device_name: Option<String>) {

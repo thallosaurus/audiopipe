@@ -16,7 +16,7 @@ use crate::splitter::ChannelSplitter;
 
 // TODO: Replace with the master mixer
 //pub static GLOBAL_MASTER_OUTPUT: Lazy<Mutex<Option<HeapProd<f32>>>> = Lazy::new(|| Mutex::new(None));
-pub static GLOBAL_MASTER_OUTPUT_MIXER: Lazy<Option<SharedInputMixer>> = Lazy::new(|| None);
+pub static GLOBAL_MASTER_OUTPUT_MIXER: Lazy<Mutex<Option<InputMixer>>> = Lazy::new(|| Mutex::new(None));
 
 pub static GLOBAL_MASTER_INPUT: Lazy<Mutex<Option<HeapCons<f32>>>> = Lazy::new(|| Mutex::new(None));
 
@@ -97,17 +97,17 @@ pub async fn setup_master_output(
     config: StreamConfig,
     //bsize: usize,
     selected_channels: Vec<u16>,
-    mixer: OutputMixer,
+    mixer: CombinedMixer,
 ) -> Result<Stream, BuildStreamError> {
     //let mut master_out = GLOBAL_MASTER_OUTPUT.lock().await;
     //master_out = Some(prod);
 
-    //let mut master_mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await;
+    let mut master_mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await;
 
-    //*master_mixer =
+    *master_mixer = Some(mixer.1);
     //let mut mixer = default_mixer(config.channels as usize, bsize);
 
-    let mixer = Arc::new(std::sync::Mutex::new(mixer));
+    let mixer = Arc::new(std::sync::Mutex::new(mixer.0));
 
     device.build_output_stream(
         &config,
@@ -208,12 +208,14 @@ pub struct OutputMixer {
 }
 
 pub struct InputMixer {
-    inputs: Vec<HeapProd<f32>>,
+    inputs: Vec<Arc<Mutex<HeapProd<f32>>>>,
 }
 
 impl InputMixer {
-    pub fn get_channel(&mut self, channel: usize) -> &mut HeapProd<f32> {
-        self.inputs.get_mut(channel).expect("channel not found")
+    pub fn get_channel(&mut self, channel: usize) -> Arc<Mutex<HeapProd<f32>>> {
+        self.inputs[channel].clone()
+        
+        //.expect("channel not found")
     }
 
     /*fn get_stereo_channel(&mut self, l_channel: usize, r_channel: usize) -> PairedMixer {
@@ -224,11 +226,13 @@ impl InputMixer {
     }*/
 }
 
-pub type SharedInputMixer = Arc<Mutex<InputMixer>>;
+type SharedInputMixer = Arc<Mutex<InputMixer>>;
 
 pub type CombinedMixer = (OutputMixer, InputMixer);
 
 type MasterOutputChannelCount = usize;
+
+pub type RawInputChannel = HeapProd<f32>;
 
 enum PairedMixer {
     Mono(HeapProd<f32>),
@@ -242,13 +246,6 @@ impl OutputMixer {
     ) -> &mut HeapCons<f32> {
         self.outputs.get_mut(channel).expect("channel not found")
     }
-
-    /*fn get_channel_input_buffer(
-        &mut self,
-        channel: MasterOutputChannelCount,
-    ) -> &mut HeapProd<f32> {
-        self.inputs.get_mut(channel).expect("channel not found")
-    }*/
 
     fn mixdown(&mut self, output_buffer: &mut [f32]) -> usize {
         let mut ch = 0;
@@ -275,7 +272,7 @@ pub fn default_mixer(chcount: MasterOutputChannelCount, bufsize_per_channel: usi
         let buf = ringbuf::HeapRb::<f32>::new(bufsize_per_channel);
 
         let (prod, cons) = buf.split();
-        inputs.push(prod);
+        inputs.push(Arc::new(Mutex::new(prod)));
         outputs.push(cons);
     }
 
@@ -300,12 +297,12 @@ mod tests {
 
     use crate::async_comp::audio::default_mixer;
 
-    #[test]
-    fn test_mixer() {
+    #[tokio::test]
+    async fn test_mixer() {
         let (mut output, mut input) = default_mixer(2, 8);
 
         for (ch, c) in input.inputs.iter_mut().enumerate() {
-            c.try_push((ch + 1) as f32).unwrap();
+            c.lock().await.try_push((ch + 1) as f32).unwrap();
         }
 
         let mut master_buf = vec![0.0f32; 16];

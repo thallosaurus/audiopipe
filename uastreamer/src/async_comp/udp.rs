@@ -9,7 +9,7 @@ use tokio::{
     sync::mpsc::{self, error::SendError},
 };
 
-use crate::async_comp::audio::{GLOBAL_MASTER_INPUT, SharedInputMixer};
+use crate::async_comp::audio::{InputMixer, RawInputChannel, GLOBAL_MASTER_INPUT};
 
 pub enum UdpServerCommands {
     Stop,
@@ -53,7 +53,7 @@ pub async fn start_audio_stream_server(
     smprt: u32,
     bufsize: u32,
     chcount: usize,
-    mixer: SharedInputMixer,
+    ch: (RawInputChannel, RawInputChannel),
 ) -> UdpServerHandle {
     let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
     let local_addr = sock.local_addr().unwrap();
@@ -61,9 +61,9 @@ pub async fn start_audio_stream_server(
 
     let (s, r) = mpsc::channel(1);
 
-    let mixer_clone = mixer.clone();
+    //let mixer_clone = mixer.clone();
     UdpServerHandle {
-        _handle: Box::pin(udp_server(sock, r, mixer)), //info!("UDP Server Listening");
+        _handle: Box::pin(udp_server(sock, r)), //info!("UDP Server Listening");
         channel: s,
         local_addr,
     }
@@ -92,7 +92,7 @@ pub async fn start_audio_stream_client(
 pub async fn udp_server(
     sock: UdpSocket,
     mut ch: mpsc::Receiver<UdpServerCommands>,
-    mixer: SharedInputMixer,
+    //mixer: SharedInputMixer,
 ) -> io::Result<()> {
     info!("Starting UDP Receiver");
     // start connection
@@ -111,7 +111,7 @@ pub async fn udp_server(
                         trace!("Received Packet from {}, Length: {}, {:?}", addr, len, packet);
 
                         // TODO Get Output Channel for server
-                        process_udp_server_output(packet, &mixer).await;
+                        process_udp_server_output(packet).await;
 
 
                         // decode packet
@@ -137,7 +137,9 @@ pub async fn udp_server(
 /// Function that gets called when the udp socket received a new AudioPacket
 ///
 /// Writes to the master mixer
-async fn process_udp_server_output(packet: TokioUdpAudioPacket, mixer: &SharedInputMixer) {
+async fn process_udp_server_output(packet: TokioUdpAudioPacket, 
+    //mixer: &SharedInputMixer
+    ) {
     // Convert the buffered network samples to the specified sample format
     let converted_samples: &[f32] = bytemuck::try_cast_slice(&packet.data).unwrap();
     //.map_err(|e| UdpError::CastingError(e))?;
@@ -148,12 +150,18 @@ async fn process_udp_server_output(packet: TokioUdpAudioPacket, mixer: &SharedIn
 
     let mut b = 0;
 
-    let mut mixer = mixer.lock().await;
+    //let mut mixer = mixer.lock().await;
     //mixer.get_channel(channel)
 
     for &sample in converted_samples {
         // TODO implement fell-behind logic here
         let ch_selector = b % packet.channels.len();
+
+
+        let c;
+        if ch_selector == 0 {
+            c 
+        }
         let channel = mixer.get_channel(ch_selector);
 
         if let Err(err) = channel.try_push(sample) {

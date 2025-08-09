@@ -6,6 +6,7 @@ use std::{
 
 use cpal::StreamConfig;
 use log::{debug, error, info, trace};
+use ringbuf::traits::Producer;
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
@@ -57,7 +58,7 @@ async fn read_packet(
 }
 
 pub async fn tcp_server(
-    sock_addr: &str,
+    sock_addr: String,
     channel_count: usize,
 ) -> io::Result<()> {
     let ip: Ipv4Addr = sock_addr.parse().expect("parse failed");
@@ -100,9 +101,13 @@ async fn handle_tcp_server_connection(
                 let connection_id = uuid::Uuid::new_v4();
                 let mut h = handles.lock().await;
 
-                let mixer = GLOBAL_MASTER_OUTPUT_MIXER.clone().expect("failed to open master output mixer");
+                let mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await.expect("failed to open master output mixer");
 
-                let handle = start_audio_stream_server(smprt, bufsize, chcount, mixer).await;
+                let l_ch = mixer.get_channel(0);
+                let r_ch = mixer.get_channel(1);
+                r_ch.try_push(42.0);
+
+                let handle = start_audio_stream_server(smprt, bufsize, chcount, (l_ch, r_ch)).await;
                 let local_addr = handle.local_addr.clone();
                 h.insert(connection_id, handle);
 
@@ -170,7 +175,6 @@ pub async fn tcp_client(
             TokioTcpControlState::Disconnect => todo!(),
             TokioTcpControlState::Error(_) => todo!(),
             TokioTcpControlState::ConnectResponse(conn_id, port, chcount) => {
-                // TODO
                 let mut _h = handle.lock().await;
                 if _h.is_none() {
                     let ip: Ipv4Addr = target_node_addr.parse().expect("parse failed");
@@ -187,12 +191,6 @@ pub async fn tcp_client(
 
 #[cfg(test)]
 mod tests {
-    
-
-    
-
-    
-
     #[tokio::test]
     async fn test_handle_tcp_server_connection() {
         env_logger::init();
