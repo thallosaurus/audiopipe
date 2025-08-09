@@ -1,26 +1,23 @@
 use std::{
-    cell::RefCell,
     collections::HashMap,
     net::{Ipv4Addr, SocketAddr},
     sync::Arc,
 };
 
 use cpal::StreamConfig;
-use log::{debug, error, info, trace};
+use log::{debug, info, trace};
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
     sync::{
-        Mutex, RwLock,
-        mpsc::{self, Receiver},
+        Mutex,
+        mpsc::{self},
     },
     task::JoinHandle,
 };
 
-use crate::async_comp::{
-    audio::GLOBAL_MASTER_OUTPUT_MIXER, mixer::MixerTrackSelector, udp::{UdpClientHandle, UdpServerHandle}
-};
+use crate::{audio::GLOBAL_MASTER_OUTPUT_MIXER, mixer::MixerTrackSelector, udp::{UdpClientHandle, UdpServerHandle}};
 
 /// This enum states the type of the tcp control packet.
 /// It gets used when the two instances exchange data

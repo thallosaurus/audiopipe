@@ -32,7 +32,7 @@ impl FromStr for ChannelMapping {
 }
 
 #[derive(Parser)]
-#[clap(name = "mycli")]
+#[clap(name = "audiopipe")]
 pub struct Cli {
 
     /// Enum that holds the subcommand
@@ -80,7 +80,7 @@ pub struct GlobalOptions {
     #[arg(short, long)]
     pub device: Option<String>,
 
-    /// Requested Buffer Size
+    /// Requested Device Buffer Size
     #[arg(short, long)]
     pub buffer_size: Option<u32>,
 

@@ -2,11 +2,6 @@ use std::{
     fmt::Debug,
     fs::{File, create_dir_all},
     io::BufWriter,
-    net::SocketAddr,
-    sync::{
-        Arc, Mutex,
-        mpsc::{self, Receiver, Sender, channel},
-    },
     time::SystemTime,
 };
 
@@ -16,13 +11,10 @@ use cpal::{traits::*, *};
 use hound::WavWriter;
 
 //use config::{StreamerConfig, get_cpal_config};
-use log::{debug, error, info};
-use ringbuf::{
-    HeapCons, HeapProd,
-    traits::{Observer, Split},
-};
+use log::{debug, info};
 
-use crate::async_comp::{audio::{select_input_device_config, select_output_device_config, setup_master_output}, mixer::default_mixer, tcp::new_control_server};
+use crate::{audio::{select_input_device_config, select_output_device_config, setup_master_output}, mixer::default_mixer, tcp::new_control_server};
+
 
 /// Default Port if none is specified
 pub const DEFAULT_PORT: u16 = 42069;
@@ -53,9 +45,12 @@ pub mod splitter;
 
 pub mod ualog;
 
-pub mod async_comp;
-
 pub mod cli;
+
+pub mod tcp;
+pub mod udp;
+pub mod audio;
+pub mod mixer;
 
 /// Defines the behavior of the stream
 ///
@@ -191,8 +186,6 @@ pub fn write_debug<T: cpal::SizedSample + Send + Pod + Default + 'static>(
     }
 }
 
-
-
 pub async fn init_sender(
     target: String,
     audio_host: Option<String>,
@@ -202,7 +195,7 @@ pub async fn init_sender(
 ) {
 
     let (input_device, sconfig) = setup_cpal_input(audio_host, device_name, bsize, srate);
-    let master_stream = async_comp::audio::setup_master_input(
+    let master_stream = audio::setup_master_input(
         input_device,
         &sconfig,
         bsize as usize,
@@ -215,7 +208,7 @@ pub async fn init_sender(
 
     // TODO Implement reconnection logic here
     // TODO Check buffersize values here
-    async_comp::tcp::tcp_client(&target, &sconfig, 2, bsize)
+    tcp::tcp_client(&target, &sconfig, 2, bsize)
         .await
         .unwrap();
 }

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc};
 
 use cpal::Sample;
 use log::debug;
@@ -6,24 +6,20 @@ use ringbuf::{traits::{Consumer, Split}, HeapCons, HeapProd};
 use tokio::sync::Mutex;
 
 
-pub struct OutputMixer {
-    channel_count: MasterOutputChannelCount,
-
-    buffer_size: usize,
-    outputs: Vec<HeapCons<f32>>,
-}
-
 pub enum MixerTrackSelector {
     Mono(usize),
     Stereo(usize, usize),
 }
 
+/// Paired Mixer Track for processing
 pub enum MixerTrack {
     Mono(RawInputMixerTrack),
     Stereo(RawInputMixerTrack, RawInputMixerTrack),
 }
 
+/// Shared Reference to the Input Mixer Ringbuffer Producer
 pub type RawInputMixerTrack = Arc<Mutex<HeapProd<f32>>>;
+pub type RawOutputMixerTrack = Arc<std::sync::Mutex<HeapCons<f32>>>;
 
 pub enum MixerError {
     InputChannelNotFound,
@@ -32,13 +28,14 @@ pub enum MixerError {
 
 type MixerResult<T> = Result<T, MixerError>;
 
+/// The Input Side of the Mixer
 #[derive(Clone)]
-pub struct InputMixer {
+pub struct MixerInputEnd {
     inputs: Vec<Arc<Mutex<HeapProd<f32>>>>,
     channel_count: usize
 }
 
-impl InputMixer {
+impl MixerInputEnd {
     pub fn get_raw_channel(&mut self, channel: usize) -> MixerResult<RawInputMixerTrack> {
         if channel < self.channel_count {
             Ok(self.inputs[channel].clone())
@@ -75,22 +72,35 @@ impl InputMixer {
 
 //type SharedInputMixer = Arc<Mutex<InputMixer>>;
 
-pub type CombinedMixer = (OutputMixer, InputMixer);
+pub type Mixer = (MixerOutputEnd, MixerInputEnd);
 
 type MasterOutputChannelCount = usize;
 
+#[deprecated]
 pub type RawInputChannel = Arc<Mutex<HeapProd<f32>>>;
 
+pub struct MixerOutputEnd {
+    channel_count: MasterOutputChannelCount,
+
+    buffer_size: usize,
+    outputs: Vec<RawOutputMixerTrack>,
+}
+
 /// TODO Currently without errors until i figure out how to do this with cpal (threaded vs tokio)
-impl OutputMixer {
+impl MixerOutputEnd {
 
     // TODO implement error handling - look at inputmixer
     fn get_channel_output_buffer(
         &mut self,
-        channel: MasterOutputChannelCount,
+        channel: usize,
     //) -> &mut HeapCons<f32> {
-    ) -> &mut HeapCons<f32> {
-        self.outputs.get_mut(channel).expect("channel not found")
+    ) -> MixerResult<RawOutputMixerTrack> {
+        if channel < self.channel_count {
+            Ok(self.outputs[channel].clone())
+            //self.outputs.get_mut(channel).expect("channel not found")
+        } else {
+            Err(MixerError::OutputChannelNotFound)
+        }
     }
 
     pub fn mixdown(&mut self, output_buffer: &mut [f32]) -> usize {
@@ -98,12 +108,14 @@ impl OutputMixer {
 
         let mut consumed = 0;
         for o in output_buffer.iter_mut() {
-            let c = self.get_channel_output_buffer(ch);
+            if let Ok(c) = self.get_channel_output_buffer(ch) {
+                let mut c = c.lock().unwrap();
 
-            *o = c.try_pop().unwrap_or(Sample::EQUILIBRIUM);
-            consumed += 1;
-
-            ch = (ch + 1) % self.channel_count;
+                *o = c.try_pop().unwrap_or(Sample::EQUILIBRIUM);
+                consumed += 1;
+                
+                ch = (ch + 1) % self.channel_count;
+            }
         }
 
         consumed
@@ -113,7 +125,7 @@ impl OutputMixer {
 pub fn default_mixer(
     chcount: MasterOutputChannelCount,
     bufsize_per_channel: usize,
-) -> CombinedMixer {
+) -> Mixer {
     let mut inputs = Vec::new();
     let mut outputs = Vec::new();
 
@@ -122,7 +134,7 @@ pub fn default_mixer(
 
         let (prod, cons) = buf.split();
         inputs.push(Arc::new(Mutex::new(prod)));
-        outputs.push(cons);
+        outputs.push(Arc::new(std::sync::Mutex::new(cons)));
     }
 
     debug!(
@@ -130,13 +142,13 @@ pub fn default_mixer(
         chcount, bufsize_per_channel
     );
     (
-        OutputMixer {
+        MixerOutputEnd {
             channel_count: chcount,
             buffer_size: bufsize_per_channel,
             //inputs,
             outputs,
         },
-        InputMixer { inputs, channel_count: chcount },
+        MixerInputEnd { inputs, channel_count: chcount },
     )
 }
 
@@ -145,7 +157,7 @@ pub fn default_mixer(
 mod tests {
     use ringbuf::traits::Producer;
 
-    use crate::async_comp::mixer::default_mixer;
+    use crate::mixer::default_mixer;
 
     #[tokio::test]
     async fn test_mixer() {

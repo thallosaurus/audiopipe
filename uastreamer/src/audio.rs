@@ -12,9 +12,9 @@ use ringbuf::{
 };
 use tokio::sync::Mutex;
 
-use crate::{async_comp::mixer::{CombinedMixer, InputMixer}, splitter::ChannelSplitter};
+use crate::{mixer::{Mixer, MixerInputEnd}, splitter::ChannelSplitter};
 
-pub static GLOBAL_MASTER_OUTPUT_MIXER: Lazy<Arc<Mutex<Option<InputMixer>>>> =
+pub static GLOBAL_MASTER_OUTPUT_MIXER: Lazy<Arc<Mutex<Option<MixerInputEnd>>>> =
     Lazy::new(|| Arc::new(Mutex::new(None)));
 
 pub static GLOBAL_MASTER_INPUT: Lazy<Mutex<Option<HeapCons<f32>>>> = Lazy::new(|| Mutex::new(None));
@@ -96,7 +96,7 @@ pub async fn setup_master_output(
     config: StreamConfig,
     //bsize: usize,
     //selected_channels: Vec<u16>,
-    mixer: CombinedMixer,
+    mixer: Mixer,
 ) -> Result<Stream, BuildStreamError> {
     //let mut master_out = GLOBAL_MASTER_OUTPUT.lock().await;
     //master_out = Some(prod);

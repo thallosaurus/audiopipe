@@ -10,7 +10,7 @@ use tokio::{
     task::JoinHandle,
 };
 
-use crate::async_comp::{audio::GLOBAL_MASTER_INPUT, mixer::MixerTrack};
+use crate::{audio::GLOBAL_MASTER_INPUT, mixer::MixerTrack};
 
 pub enum UdpServerCommands {
     Stop,
@@ -236,10 +236,7 @@ mod tests {
         sync::{Mutex, mpsc},
     };
 
-    use crate::async_comp::{
-        mixer::{MixerTrackSelector, default_mixer},
-        udp::{udp_client, udp_server},
-    };
+    use crate::{mixer::{default_mixer, MixerTrackSelector}, udp::{udp_client, udp_server}};
 
     #[tokio::test]
     async fn tcp_server_test() {
