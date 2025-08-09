@@ -1,4 +1,5 @@
 use std::{
+    cell::RefCell,
     collections::HashMap,
     net::{Ipv4Addr, SocketAddr},
     sync::Arc,
@@ -10,12 +11,17 @@ use serde::{Deserialize, Serialize};
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
-    sync::Mutex,
+    sync::{
+        Mutex, RwLock,
+        mpsc::{self, Receiver},
+    },
+    task::JoinHandle,
 };
 
-use crate::async_comp::{audio::GLOBAL_MASTER_OUTPUT_MIXER, udp::{
-    start_audio_stream_client, start_audio_stream_server, UdpClientHandle, UdpServerHandle
-}};
+use crate::async_comp::{
+    audio::{GLOBAL_MASTER_OUTPUT_MIXER, RawInputChannel},
+    udp::{UdpClientHandle, UdpServerHandle},
+};
 
 /// This enum states the type of the tcp control packet.
 /// It gets used when the two instances exchange data
@@ -56,45 +62,55 @@ async fn read_packet(
     Ok(json)
 }
 
-pub async fn tcp_server(
-    sock_addr: String,
-    channel_count: usize,
-) -> io::Result<()> {
+enum TcpServerCommands {
+    Stop,
+}
+
+pub struct TcpServer {
+    pub _task: JoinHandle<io::Result<()>>,
+    channel: mpsc::Sender<TcpServerCommands>,
+}
+
+//impl TcpServer {
+/// The entry point to the tcp communication server
+pub async fn new_control_server(sock_addr: String, channel_count: usize) -> io::Result<()> {
     let ip: Ipv4Addr = sock_addr.parse().expect("parse failed");
     let target = SocketAddr::new(std::net::IpAddr::V4(ip), 6789);
+
+    //let (s, r) = mpsc::channel(1);
+
+    //TcpServer {
+
     let listen = TcpListener::bind(target).await?;
-
     let handles: SharedTcpServerHandles = Arc::new(Mutex::new(HashMap::new()));
+
+    //let rc = Arc::new(Mutex::new(r));
+
     info!("Server Listening");
-
     loop {
-        let (mut socket, client_addr) = listen.accept().await?;
-
-        let handles = handles.clone();
-        tokio::spawn(async move {
-            if let Err(e) = handle_tcp_server_connection(&mut socket, handles, channel_count).await
-            {
-                // error handling
-                error!("{}", e);
-            }
-            //info!("New connection from {}", client_addr);
-        });
+        if let Ok((socket, _client_addr)) = listen.accept().await {
+            tokio::spawn(handle_tcp_server_connection(
+                socket,
+                handles.clone(),
+                channel_count,
+            ));
+        }
     }
-
-    Ok(())
 }
 
 async fn handle_tcp_server_connection(
-    socket: &mut TcpStream,
+    mut socket: TcpStream,
     handles: SharedTcpServerHandles,
     channel_count: usize,
+    //cmd: mpsc::Receiver<TcpServerCommands>
+    //handle: Fn(u32, u32, usize, (RawInputChannel, RawInputChannel))
 ) -> io::Result<()> {
     let mut buf = vec![0; 8196];
     //let mixer = GLOBAL_MASTER_OUTPUT_MIXER.clone().lock().await.expect("failed to open master output mixer");
     let mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await;
 
     loop {
-        let json = read_packet(socket, &mut buf).await?;
+        let json = read_packet(&mut socket, &mut buf).await?;
 
         match json.state {
             TokioTcpControlState::ConnectRequest(smprt, bufsize, chcount) => {
@@ -108,9 +124,14 @@ async fn handle_tcp_server_connection(
                 let l_ch = mixer.get_channel(0);
                 let r_ch = mixer.get_channel(1);
 
-                //r_ch.lock().await.try_push(42.0);
+                let handle = UdpServerHandle::start_audio_stream_server(
+                    smprt,
+                    bufsize,
+                    chcount,
+                    (l_ch.clone(), r_ch.clone()),
+                )
+                .await;
 
-                let handle = start_audio_stream_server(smprt, bufsize, chcount, (l_ch.clone(), r_ch.clone())).await;
                 let local_addr = handle.local_addr.clone();
                 h.insert(connection_id, handle);
 
@@ -124,7 +145,7 @@ async fn handle_tcp_server_connection(
                     ),
                 };
                 //let json = serde_json::to_vec(&connection_response).unwrap();
-                send_packet(socket, connection_response).await?;
+                send_packet(&mut socket, connection_response).await?;
             }
             _ => {
                 todo!("Unsupported TCP State")
@@ -174,8 +195,8 @@ pub async fn tcp_client(
         let json: TokioTcpControlPacket = serde_json::from_slice(data).unwrap();
         debug!("< Read Packet: {:?}", json);
         match json.state {
-            TokioTcpControlState::ConnectRequest(samplerate, buffersize, chcount) => {}
-            TokioTcpControlState::Disconnect => todo!(),
+            TokioTcpControlState::ConnectRequest(samplerate, buffersize, chcount) => todo!(),
+            TokioTcpControlState::Disconnect => {}
             TokioTcpControlState::Error(_) => todo!(),
             TokioTcpControlState::ConnectResponse(conn_id, port, chcount) => {
                 let mut _h = handle.lock().await;
@@ -183,7 +204,14 @@ pub async fn tcp_client(
                     let ip: Ipv4Addr = target_node_addr.parse().expect("parse failed");
                     let target = SocketAddr::new(std::net::IpAddr::V4(ip), port);
                     info!("{}", target);
-                    *_h = Some(start_audio_stream_client(target, max_buffer_size, chcount).await);
+                    *_h = Some(
+                        UdpClientHandle::start_audio_stream_client(
+                            target,
+                            max_buffer_size,
+                            chcount,
+                        )
+                        .await,
+                    );
                 } else {
                     // there is already a stream
                 }

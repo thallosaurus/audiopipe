@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, pin::Pin, time::SystemTime};
+use std::{net::SocketAddr, time::SystemTime};
 
 use log::{error, info, trace};
 use ringbuf::traits::{Consumer, Observer, Producer};
@@ -7,6 +7,7 @@ use tokio::{
     io::{self},
     net::UdpSocket,
     sync::mpsc::{self, error::SendError},
+    task::JoinHandle,
 };
 
 use crate::async_comp::audio::{GLOBAL_MASTER_INPUT, RawInputChannel};
@@ -19,7 +20,8 @@ pub enum UdpClientCommands {
 }
 
 pub struct UdpServerHandle {
-    _handle: Pin<Box<dyn Future<Output = io::Result<()>> + Send>>,
+    //_handle: UdpServerHandleFuture,
+    _handle: JoinHandle<io::Result<()>>,
     channel: mpsc::Sender<UdpServerCommands>,
     pub local_addr: SocketAddr,
 }
@@ -28,14 +30,56 @@ impl UdpServerHandle {
     async fn stop(&self) -> Result<(), SendError<UdpServerCommands>> {
         self.channel.send(UdpServerCommands::Stop).await
     }
+
+    pub async fn start_audio_stream_server(
+        smprt: u32,
+        bufsize: u32,
+        chcount: usize,
+        ch: (RawInputChannel, RawInputChannel),
+    ) -> UdpServerHandle {
+        let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
+        let local_addr = sock.local_addr().unwrap();
+        info!("local udp addr: {}", local_addr);
+
+        let (s, r) = mpsc::channel(1);
+
+        //let mixer_clone = mixer.clone();
+        UdpServerHandle {
+            //_handle: Arc::new(Mutex::new(Box::pin(udp_server(sock, r, ch)))), //info!("UDP Server Listening");
+            _handle: tokio::spawn(udp_server(sock, r, ch)),
+            channel: s,
+            local_addr,
+        }
+    }
 }
 
 pub struct UdpClientHandle {
-    _handle: Pin<Box<dyn Future<Output = io::Result<()>> + Send>>,
+    //_handle: Pin<Box<dyn Future<Output = io::Result<()>> + Send>>,
+    _handle: JoinHandle<io::Result<()>>,
     channel: mpsc::Sender<UdpClientCommands>,
 }
 
 impl UdpClientHandle {
+    pub async fn start_audio_stream_client(
+        addr: SocketAddr,
+        //smprt: u32,
+        bufsize: u32,
+        chcount: usize,
+    ) -> UdpClientHandle {
+        let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
+
+        info!("Connecting UDP to {}", addr);
+        sock.connect(addr).await.unwrap();
+
+        let (s, r) = mpsc::channel(1);
+
+        //info!("Starting UDP Sender");
+        UdpClientHandle {
+            //_handle: Box::pin(udp_client(sock, bufsize * chcount as u32, r)),
+            _handle: tokio::spawn(udp_client(sock, bufsize * chcount as u32, r)),
+            channel: s,
+        }
+    }
     async fn stop(&self) -> Result<(), SendError<UdpClientCommands>> {
         self.channel.send(UdpClientCommands::Stop).await
     }
@@ -47,46 +91,6 @@ struct TokioUdpAudioPacket {
     timestamp: SystemTime,
     channels: Vec<usize>,
     data: Vec<u8>,
-}
-
-pub async fn start_audio_stream_server(
-    smprt: u32,
-    bufsize: u32,
-    chcount: usize,
-    ch: (RawInputChannel, RawInputChannel),
-) -> UdpServerHandle {
-    let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
-    let local_addr = sock.local_addr().unwrap();
-    info!("local udp addr: {}", local_addr);
-
-    let (s, r) = mpsc::channel(1);
-
-    //let mixer_clone = mixer.clone();
-    UdpServerHandle {
-        _handle: Box::pin(udp_server(sock, r, ch)), //info!("UDP Server Listening");
-        channel: s,
-        local_addr,
-    }
-}
-
-pub async fn start_audio_stream_client(
-    addr: SocketAddr,
-    //smprt: u32,
-    bufsize: u32,
-    chcount: usize,
-) -> UdpClientHandle {
-    let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
-
-    info!("Connecting UDP to {}", addr);
-    sock.connect(addr).await.unwrap();
-
-    let (s, r) = mpsc::channel(1);
-
-    //info!("Starting UDP Sender");
-    UdpClientHandle {
-        _handle: Box::pin(udp_client(sock, bufsize * chcount as u32, r)),
-        channel: s,
-    }
 }
 
 pub async fn udp_server(
@@ -164,10 +168,6 @@ async fn process_udp_server_output(
         } else {
             c = channel.1.lock().await;
         }
-
-        //let mut ch0 = channel.0.lock().await;
-        //let mut ch1 = channel.1.lock().await;
-        //let channel = mixer.get_channel(ch_selector);
 
         if let Err(err) = c.try_push(sample) {
             dropped += 1;

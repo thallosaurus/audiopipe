@@ -3,14 +3,13 @@ use cpal::{
     StreamConfig,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
-use log::info;
+use log::{debug, info};
 use uastreamer::{
     async_comp::{
         audio::{
             default_mixer, select_input_device_config, select_output_device_config,
             setup_master_output,
-        },
-        tcp::tcp_server,
+        }, tcp::{new_control_server, TcpServer},
     },
     cli::{Cli, Commands},
     search_device, search_for_host,
@@ -95,6 +94,7 @@ async fn init_sender(
 
     master_stream.play().unwrap();
 
+    // TODO Implement reconnection logic here
     uastreamer::async_comp::tcp::tcp_client(&target, &sconfig, 2, max_bufsize)
         .await
         .unwrap();
@@ -111,6 +111,8 @@ async fn init_receiver(
         Some(h) => search_for_host(&h).unwrap(),
         None => cpal::default_host(),
     };
+
+    debug!("Searching for device name: {:?}", device_name);
 
     let output_device = match device_name {
         Some(d) => audio_host
@@ -146,13 +148,14 @@ async fn init_receiver(
 
     let mixer = default_mixer(chcount as usize, bsize as usize);
 
-    let master_stream = setup_master_output(output_device, sconfig, vec![0, 1], mixer)
+    let master_stream = setup_master_output(output_device, sconfig, mixer)
         .await
         .expect("couldn't build master output");
 
     master_stream.play().unwrap();
 
-    tcp_server(addr.unwrap_or("0.0.0.0".to_string()), chcount.into()).await.unwrap();
+    new_control_server("0.0.0.0".to_string(), chcount.into()).await.unwrap();
+    //server.block();
 }
 
 fn enumerate_devices(audio_host: Option<String>, device_name: Option<String>) {

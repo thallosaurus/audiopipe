@@ -79,7 +79,7 @@ pub fn select_output_device_config(
 
         return x.min_sample_rate().0 <= requested_samplerate
             && x.max_sample_rate().0 >= requested_samplerate
-            && x.channels() >= chcount as u16;
+            && x.channels() >= chcount as u16
     });
 
     println!("{:?}", devs);
@@ -96,14 +96,13 @@ pub async fn setup_master_output(
     device: Device,
     config: StreamConfig,
     //bsize: usize,
-    selected_channels: Vec<u16>,
+    //selected_channels: Vec<u16>,
     mixer: CombinedMixer,
 ) -> Result<Stream, BuildStreamError> {
     //let mut master_out = GLOBAL_MASTER_OUTPUT.lock().await;
     //master_out = Some(prod);
 
     let mut master_mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await;
-
     *master_mixer = Some(mixer.1);
     //let mut mixer = default_mixer(config.channels as usize, bsize);
 
@@ -116,26 +115,7 @@ pub async fn setup_master_output(
             let m = mixer.clone();
 
             let consumed = m.lock().expect("mixer not available").mixdown(data);
-            trace!("{}", consumed);
-            //trace!("Consumed: {}", consumed);
-
-            /*let mut merger =
-            ChannelMerger::new(&mut cons, &selected_channels, config.channels, data.len())
-                .unwrap();*/
-            //cons.read(buf)
-            /*for sample in data.iter_mut() {
-                let s = merger.next();
-                if let Some(s) = s {
-                    if !cfg!(test) {
-                        *sample = s;
-                        //write_debug(writer, *sample);
-                    } else {
-                        *sample = Sample::EQUILIBRIUM;
-                    }
-                }
-
-                consumed += 1;
-            }*/
+            trace!("Consumed {} bytes", consumed);
         },
         move |err| {},
         None,
