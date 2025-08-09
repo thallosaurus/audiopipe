@@ -4,7 +4,7 @@ use cpal::{
     BuildStreamError, Device, InputCallbackInfo, Sample, Stream, StreamConfig,
     SupportedStreamConfig, traits::DeviceTrait,
 };
-use log::{debug, info, trace, warn};
+use log::{debug, trace, warn};
 use once_cell::sync::Lazy;
 use ringbuf::{
     HeapCons, HeapProd, HeapRb,

@@ -6,7 +6,6 @@ use std::{
 
 use cpal::StreamConfig;
 use log::{debug, error, info, trace};
-use ringbuf::traits::Producer;
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
@@ -92,7 +91,7 @@ async fn handle_tcp_server_connection(
 ) -> io::Result<()> {
     let mut buf = vec![0; 8196];
     //let mixer = GLOBAL_MASTER_OUTPUT_MIXER.clone().lock().await.expect("failed to open master output mixer");
-    let mut mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await;
+    let mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await;
 
     loop {
         let json = read_packet(socket, &mut buf).await?;
