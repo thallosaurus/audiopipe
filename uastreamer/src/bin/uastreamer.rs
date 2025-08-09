@@ -146,12 +146,12 @@ async fn init_receiver(
 
     let mixer = default_mixer(chcount as usize, bsize as usize);
 
-    let master_stream = setup_master_output(output_device, sconfig, vec![0, 1], mixer.0)
+    let master_stream = setup_master_output(output_device, sconfig, vec![0, 1], mixer)
         .await
         .expect("couldn't build master output");
 
     master_stream.play().unwrap();
-    
+
     tcp_server(addr.unwrap_or("0.0.0.0".to_string()), chcount.into()).await.unwrap();
 }
 

@@ -9,7 +9,7 @@ use tokio::{
     sync::mpsc::{self, error::SendError},
 };
 
-use crate::async_comp::audio::{InputMixer, RawInputChannel, GLOBAL_MASTER_INPUT};
+use crate::async_comp::audio::{GLOBAL_MASTER_INPUT, RawInputChannel};
 
 pub enum UdpServerCommands {
     Stop,
@@ -63,7 +63,7 @@ pub async fn start_audio_stream_server(
 
     //let mixer_clone = mixer.clone();
     UdpServerHandle {
-        _handle: Box::pin(udp_server(sock, r)), //info!("UDP Server Listening");
+        _handle: Box::pin(udp_server(sock, r, ch)), //info!("UDP Server Listening");
         channel: s,
         local_addr,
     }
@@ -93,6 +93,7 @@ pub async fn udp_server(
     sock: UdpSocket,
     mut ch: mpsc::Receiver<UdpServerCommands>,
     //mixer: SharedInputMixer,
+    raw_ch: (RawInputChannel, RawInputChannel),
 ) -> io::Result<()> {
     info!("Starting UDP Receiver");
     // start connection
@@ -111,8 +112,7 @@ pub async fn udp_server(
                         trace!("Received Packet from {}, Length: {}, {:?}", addr, len, packet);
 
                         // TODO Get Output Channel for server
-                        process_udp_server_output(packet).await;
-
+                        process_udp_server_output(packet, &raw_ch).await;
 
                         // decode packet
                         //info!("{:?}", String::from_utf8(data.to_vec()));
@@ -137,9 +137,10 @@ pub async fn udp_server(
 /// Function that gets called when the udp socket received a new AudioPacket
 ///
 /// Writes to the master mixer
-async fn process_udp_server_output(packet: TokioUdpAudioPacket, 
-    //mixer: &SharedInputMixer
-    ) {
+async fn process_udp_server_output(
+    packet: TokioUdpAudioPacket,
+    channel: &(RawInputChannel, RawInputChannel),
+) {
     // Convert the buffered network samples to the specified sample format
     let converted_samples: &[f32] = bytemuck::try_cast_slice(&packet.data).unwrap();
     //.map_err(|e| UdpError::CastingError(e))?;
@@ -157,14 +158,18 @@ async fn process_udp_server_output(packet: TokioUdpAudioPacket,
         // TODO implement fell-behind logic here
         let ch_selector = b % packet.channels.len();
 
-
-        let c;
+        let mut c;
         if ch_selector == 0 {
-            c 
+            c = channel.0.lock().await;
+        } else {
+            c = channel.1.lock().await;
         }
-        let channel = mixer.get_channel(ch_selector);
 
-        if let Err(err) = channel.try_push(sample) {
+        //let mut ch0 = channel.0.lock().await;
+        //let mut ch1 = channel.1.lock().await;
+        //let channel = mixer.get_channel(ch_selector);
+
+        if let Err(err) = c.try_push(sample) {
             dropped += 1;
         } else {
             consumed += 1;
@@ -250,13 +255,19 @@ mod tests {
         let (s, r) = mpsc::channel(1);
 
         let mixer = default_mixer(2, 1024);
-
         let input_mixer = Arc::new(Mutex::new(mixer.1));
 
         let handle = tokio::spawn(async move {
             let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
 
-            udp_server(sock, r, input_mixer).await.unwrap();
+            //let mut mixer = mixer.clone().expect("failed to open master output mixer");
+
+            let mut mixer_lock = input_mixer.lock().await;
+
+            let l_ch = mixer_lock.get_channel(0);
+            let r_ch = mixer_lock.get_channel(1);
+
+            udp_server(sock, r, (l_ch, r_ch)).await.unwrap();
             println!("Server stopped");
         });
 

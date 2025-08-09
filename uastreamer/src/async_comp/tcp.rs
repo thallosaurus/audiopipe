@@ -91,6 +91,8 @@ async fn handle_tcp_server_connection(
     channel_count: usize,
 ) -> io::Result<()> {
     let mut buf = vec![0; 8196];
+    //let mixer = GLOBAL_MASTER_OUTPUT_MIXER.clone().lock().await.expect("failed to open master output mixer");
+    let mut mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await;
 
     loop {
         let json = read_packet(socket, &mut buf).await?;
@@ -101,13 +103,15 @@ async fn handle_tcp_server_connection(
                 let connection_id = uuid::Uuid::new_v4();
                 let mut h = handles.lock().await;
 
-                let mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await.expect("failed to open master output mixer");
+                let mut mixer = mixer.clone().expect("failed to open master output mixer");
 
+                // TODO choose selected channels here
                 let l_ch = mixer.get_channel(0);
                 let r_ch = mixer.get_channel(1);
-                r_ch.try_push(42.0);
 
-                let handle = start_audio_stream_server(smprt, bufsize, chcount, (l_ch, r_ch)).await;
+                //r_ch.lock().await.try_push(42.0);
+
+                let handle = start_audio_stream_server(smprt, bufsize, chcount, (l_ch.clone(), r_ch.clone())).await;
                 let local_addr = handle.local_addr.clone();
                 h.insert(connection_id, handle);
 

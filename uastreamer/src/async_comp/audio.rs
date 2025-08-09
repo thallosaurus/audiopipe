@@ -4,7 +4,7 @@ use cpal::{
     BuildStreamError, Device, InputCallbackInfo, Sample, Stream, StreamConfig,
     SupportedStreamConfig, traits::DeviceTrait,
 };
-use log::{debug, warn};
+use log::{debug, info, trace, warn};
 use once_cell::sync::Lazy;
 use ringbuf::{
     HeapCons, HeapProd, HeapRb,
@@ -16,7 +16,7 @@ use crate::splitter::ChannelSplitter;
 
 // TODO: Replace with the master mixer
 //pub static GLOBAL_MASTER_OUTPUT: Lazy<Mutex<Option<HeapProd<f32>>>> = Lazy::new(|| Mutex::new(None));
-pub static GLOBAL_MASTER_OUTPUT_MIXER: Lazy<Mutex<Option<InputMixer>>> = Lazy::new(|| Mutex::new(None));
+pub static GLOBAL_MASTER_OUTPUT_MIXER: Lazy<Arc<Mutex<Option<InputMixer>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 
 pub static GLOBAL_MASTER_INPUT: Lazy<Mutex<Option<HeapCons<f32>>>> = Lazy::new(|| Mutex::new(None));
 
@@ -116,6 +116,7 @@ pub async fn setup_master_output(
             let m = mixer.clone();
 
             let consumed = m.lock().expect("mixer not available").mixdown(data);
+            trace!("{}", consumed);
             //trace!("Consumed: {}", consumed);
 
             /*let mut merger =
@@ -207,6 +208,7 @@ pub struct OutputMixer {
     outputs: Vec<HeapCons<f32>>,
 }
 
+#[derive(Clone)]
 pub struct InputMixer {
     inputs: Vec<Arc<Mutex<HeapProd<f32>>>>,
 }
@@ -232,7 +234,7 @@ pub type CombinedMixer = (OutputMixer, InputMixer);
 
 type MasterOutputChannelCount = usize;
 
-pub type RawInputChannel = HeapProd<f32>;
+pub type RawInputChannel = Arc<Mutex<HeapProd<f32>>>;
 
 enum PairedMixer {
     Mono(HeapProd<f32>),
