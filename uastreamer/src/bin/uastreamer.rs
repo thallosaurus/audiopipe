@@ -1,15 +1,14 @@
 use clap::Parser;
 use cpal::{
-    StreamConfig,
+    Device, StreamConfig,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
 use log::{debug, info};
 use uastreamer::{
     async_comp::{
-        audio::{
-            default_mixer, select_input_device_config, select_output_device_config,
-            setup_master_output,
-        }, tcp::{new_control_server, TcpServer},
+        audio::{select_input_device_config, select_output_device_config, setup_master_output},
+        mixer::default_mixer,
+        tcp::new_control_server,
     },
     cli::{Cli, Commands},
     search_device, search_for_host,
@@ -34,7 +33,14 @@ async fn main() {
             .await
         }
         Commands::Receiver(recv_commands) => {
-            init_receiver(cli.global.audio_host, cli.global.device, bsize, srate, recv_commands.addr).await
+            init_receiver(
+                cli.global.audio_host,
+                cli.global.device,
+                bsize,
+                srate,
+                recv_commands.addr,
+            )
+            .await
         }
         Commands::EnumDevices => {
             enumerate_devices(cli.global.audio_host, cli.global.device);
@@ -49,44 +55,12 @@ async fn init_sender(
     bsize: u32,
     srate: u32,
 ) {
-    let audio_host = match audio_host {
-        Some(h) => search_for_host(&h).unwrap(),
-        None => cpal::default_host(),
-    };
 
-    let input_device = match device_name {
-        Some(d) => audio_host
-            .input_devices()
-            .unwrap()
-            .find(|x| search_device(x, &d)),
-        None => audio_host.default_input_device(),
-    }
-    .expect("no input device");
-
-    let config = select_input_device_config(&input_device, bsize, srate, 2);
-
-    let bs = *config.buffer_size();
-    let max_bufsize = match bs {
-        cpal::SupportedBufferSize::Range { min, max } => max,
-        cpal::SupportedBufferSize::Unknown => panic!("Unknown Supported Buffer Size"),
-    };
-
-    let sconfig: StreamConfig = config.into();
-
-    info!(
-        "Using Audio Device {}, Sample Rate: {}, Buffer Size: {:?}, Channel Count: {}",
-        input_device
-            .name()
-            .unwrap_or("Unknown Device Name".to_string()),
-        sconfig.sample_rate.0,
-        sconfig.buffer_size,
-        sconfig.channels
-    );
-
+    let (input_device, sconfig) = setup_cpal_input(audio_host, device_name, bsize, srate);
     let master_stream = uastreamer::async_comp::audio::setup_master_input(
         input_device,
         &sconfig,
-        max_bufsize as usize,
+        bsize as usize,
         vec![0, 1],
     )
     .await
@@ -95,7 +69,8 @@ async fn init_sender(
     master_stream.play().unwrap();
 
     // TODO Implement reconnection logic here
-    uastreamer::async_comp::tcp::tcp_client(&target, &sconfig, 2, max_bufsize)
+    // TODO Check buffersize values here
+    uastreamer::async_comp::tcp::tcp_client(&target, &sconfig, 2, bsize)
         .await
         .unwrap();
 }
@@ -107,6 +82,33 @@ async fn init_receiver(
     srate: u32,
     addr: Option<String>,
 ) {
+    let (output_device, sconfig) = setup_cpal_output(audio_host, device_name, bsize, srate);
+
+    let chcount = sconfig.channels;
+
+    let mixer = default_mixer(chcount as usize, bsize as usize);
+
+    let master_stream = setup_master_output(output_device, sconfig, mixer)
+        .await
+        .expect("couldn't build master output");
+
+    master_stream.play().unwrap();
+
+    new_control_server(
+        String::from(addr.unwrap_or("0.0.0.0".to_string())),
+        chcount.into(),
+    )
+    .await
+    .unwrap();
+    //server.block();
+}
+
+fn setup_cpal_output(
+    audio_host: Option<String>,
+    device_name: Option<String>,
+    bsize: u32,
+    srate: u32,
+) -> (Device, StreamConfig) {
     let audio_host = match audio_host {
         Some(h) => search_for_host(&h).unwrap(),
         None => cpal::default_host(),
@@ -146,16 +148,50 @@ async fn init_receiver(
         chcount
     );
 
-    let mixer = default_mixer(chcount as usize, bsize as usize);
+    (output_device, sconfig)
+}
 
-    let master_stream = setup_master_output(output_device, sconfig, mixer)
-        .await
-        .expect("couldn't build master output");
+fn setup_cpal_input(
+    audio_host: Option<String>,
+    device_name: Option<String>,
+    bsize: u32,
+    srate: u32,
+) -> (Device, StreamConfig) {
+    let audio_host = match audio_host {
+        Some(h) => search_for_host(&h).unwrap(),
+        None => cpal::default_host(),
+    };
 
-    master_stream.play().unwrap();
+    let input_device = match device_name {
+        Some(d) => audio_host
+            .input_devices()
+            .unwrap()
+            .find(|x| search_device(x, &d)),
+        None => audio_host.default_input_device(),
+    }
+    .expect("no input device");
 
-    new_control_server("0.0.0.0".to_string(), chcount.into()).await.unwrap();
-    //server.block();
+    let config = select_input_device_config(&input_device, bsize, srate, 2);
+
+    let bs = *config.buffer_size();
+    let max_bufsize = match bs {
+        cpal::SupportedBufferSize::Range { min, max } => max,
+        cpal::SupportedBufferSize::Unknown => panic!("Unknown Supported Buffer Size"),
+    };
+
+    let sconfig: StreamConfig = config.into();
+
+    info!(
+        "Using Audio Device {}, Sample Rate: {}, Buffer Size: {:?}, Channel Count: {}",
+        input_device
+            .name()
+            .unwrap_or("Unknown Device Name".to_string()),
+        sconfig.sample_rate.0,
+        sconfig.buffer_size,
+        sconfig.channels
+    );
+
+    (input_device, sconfig)
 }
 
 fn enumerate_devices(audio_host: Option<String>, device_name: Option<String>) {

@@ -7,16 +7,17 @@ use cpal::{
 use log::{debug, trace, warn};
 use once_cell::sync::Lazy;
 use ringbuf::{
-    HeapCons, HeapProd, HeapRb,
-    traits::{Consumer, Producer, Split},
+    HeapCons, HeapRb,
+    traits::{Producer, Split},
 };
 use tokio::sync::Mutex;
 
-use crate::splitter::ChannelSplitter;
+use crate::{async_comp::mixer::{CombinedMixer, InputMixer}, splitter::ChannelSplitter};
 
 // TODO: Replace with the master mixer
 //pub static GLOBAL_MASTER_OUTPUT: Lazy<Mutex<Option<HeapProd<f32>>>> = Lazy::new(|| Mutex::new(None));
-pub static GLOBAL_MASTER_OUTPUT_MIXER: Lazy<Arc<Mutex<Option<InputMixer>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
+pub static GLOBAL_MASTER_OUTPUT_MIXER: Lazy<Arc<Mutex<Option<InputMixer>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(None)));
 
 pub static GLOBAL_MASTER_INPUT: Lazy<Mutex<Option<HeapCons<f32>>>> = Lazy::new(|| Mutex::new(None));
 
@@ -79,7 +80,7 @@ pub fn select_output_device_config(
 
         return x.min_sample_rate().0 <= requested_samplerate
             && x.max_sample_rate().0 >= requested_samplerate
-            && x.channels() >= chcount as u16
+            && x.channels() >= chcount as u16;
     });
 
     println!("{:?}", devs);
@@ -181,115 +182,5 @@ pub async fn setup_master_input(
     )
 }
 
-pub struct OutputMixer {
-    channel_count: MasterOutputChannelCount,
 
-    buffer_size: usize,
-    outputs: Vec<HeapCons<f32>>,
-}
 
-#[derive(Clone)]
-pub struct InputMixer {
-    inputs: Vec<Arc<Mutex<HeapProd<f32>>>>,
-}
-
-impl InputMixer {
-    pub fn get_channel(&mut self, channel: usize) -> Arc<Mutex<HeapProd<f32>>> {
-        self.inputs[channel].clone()
-        
-        //.expect("channel not found")
-    }
-
-    /*fn get_stereo_channel(&mut self, l_channel: usize, r_channel: usize) -> PairedMixer {
-        let mut left_channel = self.get_channel(l_channel);
-        let mut right_channel = self.get_channel(r_channel);
-
-        PairedMixer::Stereo(left_channel, right_channel)
-    }*/
-}
-
-type SharedInputMixer = Arc<Mutex<InputMixer>>;
-
-pub type CombinedMixer = (OutputMixer, InputMixer);
-
-type MasterOutputChannelCount = usize;
-
-pub type RawInputChannel = Arc<Mutex<HeapProd<f32>>>;
-
-enum PairedMixer {
-    Mono(HeapProd<f32>),
-    Stereo(HeapProd<f32>, HeapProd<f32>),
-}
-
-impl OutputMixer {
-    fn get_channel_output_buffer(
-        &mut self,
-        channel: MasterOutputChannelCount,
-    ) -> &mut HeapCons<f32> {
-        self.outputs.get_mut(channel).expect("channel not found")
-    }
-
-    fn mixdown(&mut self, output_buffer: &mut [f32]) -> usize {
-        let mut ch = 0;
-
-        let mut consumed = 0;
-        for o in output_buffer.iter_mut() {
-            let c = self.get_channel_output_buffer(ch);
-
-            *o = c.try_pop().unwrap_or(Sample::EQUILIBRIUM);
-            consumed += 1;
-
-            ch = (ch + 1) % self.channel_count;
-        }
-
-        consumed
-    }
-}
-
-pub fn default_mixer(chcount: MasterOutputChannelCount, bufsize_per_channel: usize) -> CombinedMixer {
-    let mut inputs = Vec::new();
-    let mut outputs = Vec::new();
-
-    for _ in 0..chcount {
-        let buf = ringbuf::HeapRb::<f32>::new(bufsize_per_channel);
-
-        let (prod, cons) = buf.split();
-        inputs.push(Arc::new(Mutex::new(prod)));
-        outputs.push(cons);
-    }
-
-    debug!(
-        "Creating Mixer with {} Channels and bufsize of {} bytes",
-        chcount, bufsize_per_channel
-    );
-    (
-        OutputMixer {
-            channel_count: chcount,
-            buffer_size: bufsize_per_channel,
-            //inputs,
-            outputs,
-        },
-        InputMixer { inputs },
-    )
-}
-
-#[cfg(test)]
-mod tests {
-    use ringbuf::traits::Producer;
-
-    use crate::async_comp::audio::default_mixer;
-
-    #[tokio::test]
-    async fn test_mixer() {
-        let (mut output, mut input) = default_mixer(2, 8);
-
-        for (ch, c) in input.inputs.iter_mut().enumerate() {
-            c.lock().await.try_push((ch + 1) as f32).unwrap();
-        }
-
-        let mut master_buf = vec![0.0f32; 16];
-        output.mixdown(&mut master_buf);
-
-        assert_eq!(&master_buf[..4], vec![1.0, 2.0, 0.0, 0.0]);
-    }
-}
