@@ -15,7 +15,7 @@ use bytemuck::Pod;
 use cpal::{traits::*, *};
 use hound::WavWriter;
 
-use config::{StreamerConfig, get_cpal_config};
+//use config::{StreamerConfig, get_cpal_config};
 use log::{debug, error, info};
 use ringbuf::{
     HeapCons, HeapProd,
@@ -40,16 +40,16 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const PKG_DESC: &str = env!("CARGO_PKG_DESCRIPTION");
 
 /// Holds everything needed for command line argument parsing
-pub mod args;
+//pub mod args;
 
 /// Holds everything related to the audio buffer splitter
 pub mod splitter;
 
 /// Holds the config struct which gets passed around
-pub mod config;
+//pub mod config;
 
 /// Holds all flows this app offers
-pub mod pooled;
+//pub mod pooled;
 
 pub mod ualog;
 
