@@ -12,11 +12,6 @@ use std::{
 
 use bytemuck::Pod;
 
-use pooled::{
-    control::{TcpControlFlow, TcpErrors, TcpResult},
-    cpal::{CpalAudioFlow, CpalStats, CpalStatus},
-    udp::{NetworkUDPStats, UdpStatus, UdpStreamFlow},
-};
 use cpal::{traits::*, *};
 use hound::WavWriter;
 
@@ -26,7 +21,8 @@ use ringbuf::{
     HeapCons, HeapProd,
     traits::{Observer, Split},
 };
-use threadpool::ThreadPool;
+
+use crate::async_comp::{audio::{select_input_device_config, select_output_device_config, setup_master_output}, mixer::default_mixer, tcp::new_control_server};
 
 /// Default Port if none is specified
 pub const DEFAULT_PORT: u16 = 42069;
@@ -195,199 +191,202 @@ pub fn write_debug<T: cpal::SizedSample + Send + Pod + Default + 'static>(
     }
 }
 
-/// Struct that holds everything the library needs
-#[deprecated]
-pub struct App<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
-    audio_buffer_prod: Arc<Mutex<HeapProd<T>>>,
-    audio_buffer_cons: Arc<Mutex<HeapCons<T>>>,
-    cpal_stats_sender: Sender<CpalStats>,
-    udp_stats_sender: Sender<NetworkUDPStats>,
-    udp_command_sender: Option<Sender<UdpStatus>>,
-    cpal_command_sender: Option<Sender<CpalStatus>>,
 
-    _config: Arc<Mutex<StreamerConfig>>,
-    pub pool: ThreadPool,
-    //thread_channels: Option<(Sender<bool>, Sender<bool>)>,
+
+pub async fn init_sender(
+    target: String,
+    audio_host: Option<String>,
+    device_name: Option<String>,
+    bsize: u32,
+    srate: u32,
+) {
+
+    let (input_device, sconfig) = setup_cpal_input(audio_host, device_name, bsize, srate);
+    let master_stream = async_comp::audio::setup_master_input(
+        input_device,
+        &sconfig,
+        bsize as usize,
+        vec![0, 1],
+    )
+    .await
+    .expect("couldn't build master output");
+
+    master_stream.play().unwrap();
+
+    // TODO Implement reconnection logic here
+    // TODO Check buffersize values here
+    async_comp::tcp::tcp_client(&target, &sconfig, 2, bsize)
+        .await
+        .unwrap();
 }
 
-impl<T> App<T>
-where
-    T: cpal::SizedSample + Send + Pod + Default + Debug + 'static,
-{
-    pub fn new(config: StreamerConfig) -> (Self, AppDebug) {
-        debug!("Using Config: {:?}", &config);
-        let audio_buffer =
-            ringbuf::HeapRb::<T>::new(config.buffer_size * config.selected_channels.len());
-        info!("Audio Buffer Size: {}", audio_buffer.capacity());
+pub async fn init_receiver(
+    audio_host: Option<String>,
+    device_name: Option<String>,
+    bsize: u32,
+    srate: u32,
+    addr: Option<String>,
+) {
+    let (output_device, sconfig) = setup_cpal_output(audio_host, device_name, bsize, srate);
 
-        let (audio_buffer_prod, audio_buffer_cons) = audio_buffer.split();
+    let chcount = sconfig.channels;
 
-        let (cpal_stats_sender, cpal_stats_receiver) = mpsc::channel::<CpalStats>();
-        let (udp_stats_sender, udp_stats_receiver) = mpsc::channel::<NetworkUDPStats>();
+    let mixer = default_mixer(chcount as usize, bsize as usize);
 
-        (
-            Self {
-                audio_buffer_prod: Arc::new(Mutex::new(audio_buffer_prod)),
-                audio_buffer_cons: Arc::new(Mutex::new(audio_buffer_cons)),
-                cpal_stats_sender,
-                udp_stats_sender,
-                _config: Arc::new(Mutex::new(config)),
-                pool: ThreadPool::new(5),
-                udp_command_sender: None,
-                cpal_command_sender: None,
-                //thread_channels: None,
-            },
-            AppDebug {
-                cpal_stats_receiver,
-                udp_stats_receiver,
-            },
-        )
-    }
+    let master_stream = setup_master_output(output_device, sconfig, mixer)
+        .await
+        .expect("couldn't build master output");
+
+    master_stream.play().unwrap();
+
+    new_control_server(
+        String::from(addr.unwrap_or("0.0.0.0".to_string())),
+        chcount.into(),
+    )
+    .await
+    .unwrap();
+    //server.block();
 }
 
-#[deprecated]
-pub struct AppDebug {
-    cpal_stats_receiver: Receiver<CpalStats>,
-    udp_stats_receiver: Receiver<NetworkUDPStats>,
+fn setup_cpal_output(
+    audio_host: Option<String>,
+    device_name: Option<String>,
+    bsize: u32,
+    srate: u32,
+) -> (Device, StreamConfig) {
+    let audio_host = match audio_host {
+        Some(h) => search_for_host(&h).unwrap(),
+        None => cpal::default_host(),
+    };
+
+    debug!("Searching for device name: {:?}", device_name);
+
+    let output_device = match device_name {
+        Some(d) => audio_host
+            .output_devices()
+            .unwrap()
+            .find(|x| search_device(x, &d)),
+        None => audio_host.default_output_device(),
+    }
+    .expect("no output device");
+
+    let config = select_output_device_config(&output_device, bsize, srate, 2);
+    let bs = *config.buffer_size();
+
+    let max_bufsize = match bs {
+        cpal::SupportedBufferSize::Range { min, max } => max,
+        cpal::SupportedBufferSize::Unknown => panic!("Unknown Supported Buffer Size"),
+    };
+
+    info!("max_buffer_size: {}", max_bufsize);
+
+    let sconfig: StreamConfig = config.into();
+    let chcount = sconfig.channels;
+
+    info!(
+        "Using Audio Device {}, Sample Rate: {}, Buffer Size: {:?}, Channel Count: {}",
+        output_device
+            .name()
+            .unwrap_or("Unknown Device Name".to_string()),
+        sconfig.sample_rate.0,
+        sconfig.buffer_size,
+        chcount
+    );
+
+    (output_device, sconfig)
 }
 
-impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> CpalAudioFlow<T> for App<T> {
-    fn get_producer(&self) -> Arc<Mutex<HeapProd<T>>> {
-        self.audio_buffer_prod.clone()
-    }
+fn setup_cpal_input(
+    audio_host: Option<String>,
+    device_name: Option<String>,
+    bsize: u32,
+    srate: u32,
+) -> (Device, StreamConfig) {
+    let audio_host = match audio_host {
+        Some(h) => search_for_host(&h).unwrap(),
+        None => cpal::default_host(),
+    };
 
-    fn get_consumer(&self) -> Arc<Mutex<HeapCons<T>>> {
-        self.audio_buffer_cons.clone()
+    let input_device = match device_name {
+        Some(d) => audio_host
+            .input_devices()
+            .unwrap()
+            .find(|x| search_device(x, &d)),
+        None => audio_host.default_input_device(),
     }
+    .expect("no input device");
 
-    fn get_cpal_stats_sender(&self) -> Sender<CpalStats> {
-        self.cpal_stats_sender.clone()
-    }
+    let config = select_input_device_config(&input_device, bsize, srate, 2);
+
+    let bs = *config.buffer_size();
+    let max_bufsize = match bs {
+        cpal::SupportedBufferSize::Range { min, max } => max,
+        cpal::SupportedBufferSize::Unknown => panic!("Unknown Supported Buffer Size"),
+    };
+
+    let sconfig: StreamConfig = config.into();
+
+    info!(
+        "Using Audio Device {}, Sample Rate: {}, Buffer Size: {:?}, Channel Count: {}",
+        input_device
+            .name()
+            .unwrap_or("Unknown Device Name".to_string()),
+        sconfig.sample_rate.0,
+        sconfig.buffer_size,
+        sconfig.channels
+    );
+
+    (input_device, sconfig)
 }
 
-impl<T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> UdpStreamFlow<T> for App<T> {
-    fn udp_get_producer(&self) -> Arc<Mutex<HeapProd<T>>> {
-        self.audio_buffer_prod.clone()
+pub fn enumerate_devices(audio_host: Option<String>, device_name: Option<String>) {
+    let host = match audio_host {
+        Some(h) => search_for_host(&h).unwrap(),
+        None => cpal::default_host(),
+    };
+
+    let output_device = match device_name {
+        Some(ref d) => host
+            .output_devices()
+            .unwrap()
+            .find(|x| search_device(x, &d)),
+        None => host.default_output_device(),
+    }
+    .expect("no output device");
+
+    let input_device = match device_name {
+        Some(ref d) => host.input_devices().unwrap().find(|x| search_device(x, &d)),
+        None => host.default_input_device(),
+    }
+    .expect("no input device");
+
+    println!("Supported Configs for Device {:?}", input_device.name());
+    for c in input_device.supported_input_configs().unwrap() {
+        println!(
+            "- BufferSize: {:?}, Channels: {}, Min Supported Sample Rate: {}, Max Supported Sample Rate: {}",
+            c.buffer_size(),
+            c.channels(),
+            c.min_sample_rate().0,
+            c.max_sample_rate().0
+        );
     }
 
-    fn udp_get_consumer(&self) -> Arc<Mutex<HeapCons<T>>> {
-        self.audio_buffer_cons.clone()
+    println!("");
+
+    println!("Supported Configs for Device {:?}", output_device.name());
+    for c in output_device.supported_output_configs().unwrap() {
+        println!(
+            "- BufferSize: {:?}, Channels: {}, Min Supported Sample Rate: {}, Max Supported Sample Rate: {}",
+            c.buffer_size(),
+            c.channels(),
+            c.min_sample_rate().0,
+            c.max_sample_rate().0
+        );
     }
 
-    fn get_udp_stats_sender(&self) -> Sender<NetworkUDPStats> {
-        self.udp_stats_sender.clone()
-    }
+    println!("");
 }
 
-impl<T> TcpControlFlow for App<T>
-where
-    T: cpal::SizedSample + Send + Pod + Default + Debug + 'static,
-{
-    fn start_stream(
-        &mut self,
-        config: StreamerConfig,
-        target: SocketAddr,
-    ) -> TcpResult<()> {
-        // Sync Channel for the buffer
-        // If sent, the udp thread is instructed to empty the contents of the buffer and send them
-        let (chan_sync_tx, chan_sync_rx) = channel::<bool>();
-
-        let (cpal_channel_tx, cpal_channel_rx) = channel::<CpalStatus>();
-        let (udp_msg_tx, udp_msg_rx) = channel::<UdpStatus>();
-
-        self.udp_command_sender = Some(udp_msg_tx);
-        self.cpal_command_sender = Some(cpal_channel_tx);
-
-        //start video capture and udp sender here
-        let dir = config.direction;
-        {
-            info!("Constructing CPAL Stream");
-            let stats = self.get_cpal_stats_sender();
-            let prod = self.get_producer();
-            let cons = self.get_consumer();
-            let streamer_config = config.clone();
-
-            self.pool.execute(move || {
-                let (d, stream_config) = get_cpal_config(
-                    config.direction,
-                    config.program_args.audio_host,
-                    config.program_args.device,
-                )
-                .unwrap();
-
-                //let device = device.lock().unwrap();
-                match Self::construct_stream(
-                    dir,
-                    &d,
-                    stream_config,
-                    streamer_config,
-                    stats,
-                    prod,
-                    cons,
-                    chan_sync_tx,
-                ) {
-                    Ok(stream) => {
-                        stream.play().unwrap();
-                        loop {
-                            //block
-                            if let Ok(msg) = cpal_channel_rx.try_recv() {
-                                match msg {
-                                    CpalStatus::DidEnd => {
-                                        println!("Stopping CPAL Stream");
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Err(err) => error!("{}", err),
-                }
-            });
-        }
-
-        {
-            info!("Constructing UDP Stream");
-            let prod = self.udp_get_producer();
-            let cons = self.udp_get_consumer();
-            let stats = self.get_udp_stats_sender();
-            debug!("{:?}", target);
-
-            let t = target.clone();
-            //t.set_ip(IpAddr::from_str("0.0.0.0").unwrap());
-            //t.set_port(42069);let (udp_msg_tx, udp_msg_rx) = channel::<UdpStatus>();
-
-            self.pool.execute(move || {
-                Self::construct_udp_stream(
-                    dir,
-                    t,
-                    cons,
-                    prod,
-                    Some(stats),
-                    udp_msg_rx,
-                    chan_sync_rx,
-                )
-                .unwrap();
-            });
-        }
-        Ok(())
-    }
-
-    fn stop_stream(&self) -> TcpResult<()> {
-        if let Some(ch) = &self.udp_command_sender {
-            ch.send(UdpStatus::DidEnd).map_err(|e| {
-                TcpErrors::UdpStatsSendError(e)
-            })?;
-        }
-
-        if let Some(ch) = &self.cpal_command_sender {
-            ch.send(CpalStatus::DidEnd).map_err(|e| {
-                TcpErrors::CpalStatsSendError(e)
-            })?;
-        }
-
-        Ok(())
-    }
-}
 
 #[cfg(test)]
 mod tests {
