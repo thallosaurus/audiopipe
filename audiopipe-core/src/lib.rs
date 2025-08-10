@@ -13,18 +13,9 @@ use hound::WavWriter;
 use log::{debug, info};
 
 use crate::{
-    audio::{select_input_device_config, select_output_device_config, set_global_master_input_mixer, set_global_master_output_mixer, setup_master_output},
-    mixer::{default_client_mixer, default_server_mixer},
-    control::new_control_server,
+    audio::{select_input_device_config, select_output_device_config, set_global_master_input_mixer, set_global_master_output_mixer, setup_master_output}, control::{client::tcp_client, server::new_control_server}, mixer::{default_client_mixer, default_server_mixer}
+
 };
-
-/// Default Port if none is specified
-#[deprecated]
-pub const DEFAULT_PORT: u16 = 42069;
-
-/// Default Buffer Size if none is specified
-#[deprecated]
-pub const SENDER_BUFFER_SIZE: usize = 1024;
 
 /// maximum permitted size of one UDP payload
 pub const MAX_UDP_CLIENT_PAYLOAD_SIZE: usize = 512;
@@ -111,12 +102,12 @@ pub async fn init_sender(
     target: String,
     audio_host: Option<String>,
     device_name: Option<String>,
-    bsize: u32,
-    srate: u32,
+    bsize: usize,
+    srate: usize,
 ) {
     let (input_device, sconfig) = setup_cpal_input(audio_host, device_name, bsize, srate);
     
-    let mixer = default_client_mixer(sconfig.channels.into(), bsize as usize);
+    let mixer = default_client_mixer(sconfig.channels.into(), bsize, srate);
 
     let master_stream =
         audio::setup_master_input(input_device, &sconfig, mixer.1)
@@ -129,21 +120,21 @@ pub async fn init_sender(
 
     // TODO Implement reconnection logic here
     // TODO Check buffersize values here
-    control::tcp_client(&target, &sconfig, bsize).await.unwrap();
+    tcp_client(&target).await.unwrap();
 }
 
 pub async fn init_receiver(
     audio_host: Option<String>,
     device_name: Option<String>,
-    bsize: u32,
-    srate: u32,
+    bsize: usize,
+    srate: usize,
     addr: Option<String>,
 ) {
     let (output_device, sconfig) = setup_cpal_output(audio_host, device_name, bsize, srate);
 
     let chcount = sconfig.channels;
 
-    let mixer = default_server_mixer(chcount as usize, bsize as usize);
+    let mixer = default_server_mixer(chcount as usize, bsize, srate);;
 
     let master_stream = setup_master_output(output_device, sconfig, mixer.0)
         .await
@@ -155,7 +146,6 @@ pub async fn init_receiver(
 
     new_control_server(
         String::from(addr.unwrap_or("0.0.0.0".to_string())),
-        chcount.into(),
     )
     .await
     .unwrap();
@@ -165,8 +155,8 @@ pub async fn init_receiver(
 fn setup_cpal_output(
     audio_host: Option<String>,
     device_name: Option<String>,
-    bsize: u32,
-    srate: u32,
+    bsize: usize,
+    srate: usize,
 ) -> (Device, StreamConfig) {
     let audio_host = match audio_host {
         Some(h) => search_for_host(&h).unwrap(),
@@ -213,8 +203,8 @@ fn setup_cpal_output(
 fn setup_cpal_input(
     audio_host: Option<String>,
     device_name: Option<String>,
-    bsize: u32,
-    srate: u32,
+    bsize: usize,
+    srate: usize,
 ) -> (Device, StreamConfig) {
     let audio_host = match audio_host {
         Some(h) => search_for_host(&h).unwrap(),

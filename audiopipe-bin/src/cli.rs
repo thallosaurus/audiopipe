@@ -17,8 +17,8 @@ pub enum ChannelMappingError {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ChannelMapping {
-    from: usize,
-    to: usize,
+    _from: usize,
+    _to: usize,
 }
 
 impl FromStr for ChannelMapping {
@@ -32,8 +32,8 @@ impl FromStr for ChannelMapping {
 
         match (from, to) {
             (Some(from), Some(to)) => Ok(Self {
-                from: usize::from_str(*from).map_err(|e| ChannelMappingError::InvalidStr)?,
-                to: usize::from_str(*to).map_err(|e| ChannelMappingError::InvalidStr)?,
+                _from: usize::from_str(*from).map_err(|e| ChannelMappingError::InvalidStr)?,
+                _to: usize::from_str(*to).map_err(|e| ChannelMappingError::InvalidStr)?,
             }),
             _ => Err(ChannelMappingError::InvalidStr),
         }
@@ -68,11 +68,13 @@ pub enum Commands {
     EnumDevices,
 }
 
+/// Holds distinct arguments for the sender side
 #[derive(Parser, Debug)]
 pub struct SenderCommands {
     pub target: String,
 }
 
+/// Holds distinct arguments for the receiver side
 #[derive(Parser, Debug)]
 pub struct ReceiverCommands {
     pub addr: Option<String>

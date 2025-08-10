@@ -1,0 +1,95 @@
+use std::{
+    net::{Ipv4Addr, SocketAddr},
+    str::FromStr,
+    sync::Arc,
+};
+
+use cpal::StreamConfig;
+use log::{debug, info, trace};
+use tokio::{
+    io::{self, AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
+    sync::Mutex,
+};
+use uuid::Uuid;
+
+use crate::{
+    audio::GLOBAL_MASTER_OUTPUT_MIXER, control::{
+        packet::{ControlRequest, ControlResponse}, ConnectionControl, ConnectionControlState
+    }, streamer::sender::UdpClientHandle
+};
+
+async fn send_packet(stream: &mut TcpStream, packet: ControlRequest) -> io::Result<()> {
+    let json = serde_json::to_vec(&packet).unwrap();
+
+    stream.write_all(json.as_slice()).await
+}
+
+async fn read_packet(stream: &mut TcpStream, mut buf: &mut [u8]) -> io::Result<ControlResponse> {
+    let n = stream.read(&mut buf).await?;
+
+    let data = &buf[..n];
+    trace!("{:?}", data);
+    let json = serde_json::from_slice(data)?;
+    debug!("{:?}", json);
+    Ok(json)
+}
+
+/// channel count tells us, how many of our available channels we want to send
+/// dont get tempted to just pipe in the stream config variable
+pub async fn tcp_client(
+    target_node_addr: &str,
+    //config: &StreamConfig,
+    //max_buffer_size: u32,
+) -> io::Result<()> {
+    let ip: Ipv4Addr = target_node_addr.parse().expect("parse failed");
+    let target = SocketAddr::new(std::net::IpAddr::V4(ip), 6789);
+    let mut stream = TcpStream::connect(target).await?;
+    info!("Connected to server {}", target);
+
+    /*let packet = ConnectionControl {
+        state: ConnectionControlState::ConnectRequest(
+            config.sample_rate.0,
+            max_buffer_size,
+            config.channels as usize,
+        ),
+    };*/
+
+    let packet = ControlRequest::OpenStream(crate::mixer::MixerTrackSelector::Stereo(0, 1));
+    send_packet(&mut stream, packet).await?;
+
+    //let mut json = serde_json::to_vec(&packet)?;
+    //stream.write_all(json.as_mut_slice()).await.unwrap();
+
+    // Stores the current udp connection
+    let handle: Arc<Mutex<Option<UdpClientHandle>>> = Arc::new(Mutex::new(None));
+
+    // the network message buffer
+    // TODO make this better
+    let mut buf = vec![0; 1024];
+
+    loop {
+        // buffer reuse
+        let json = read_packet(&mut stream, &mut buf).await?;
+
+        debug!("< Read Packet: {:?}", json);
+
+        let handle = handle.clone();
+
+        match json {
+            ControlResponse::Stream(uuid, port, bufsize, srate) => {
+                let ip: Ipv4Addr = target_node_addr.parse().expect("parse failed");
+                let target = SocketAddr::new(std::net::IpAddr::V4(ip), port);
+                info!(
+                    "Connection to peer {} with connection id {} successful",
+                    target, uuid
+                );
+
+                *handle.lock().await = Some(UdpClientHandle::start_audio_stream_client(target, uuid, bufsize, srate).await);
+            }
+            ControlResponse::Ok => todo!(),
+            ControlResponse::Error(control_error) => todo!(),
+        }
+    }
+    Ok(())
+}

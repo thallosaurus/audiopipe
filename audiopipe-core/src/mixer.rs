@@ -6,9 +6,11 @@ use ringbuf::{
     HeapCons, HeapProd,
     traits::{Consumer, Producer, Split},
 };
+use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 /// Input enum which selects one or two channels together
+#[derive(Serialize, Deserialize, Debug)]
 pub enum MixerTrackSelector {
     Mono(usize),
     Stereo(usize, usize),
@@ -34,10 +36,11 @@ pub type ServerMixer = (SyncMixerOutputEnd, AsyncMixerInputEnd);
 pub type ClientMixer = (AsyncMixerOutputEnd, SyncMixerInputEnd);
 
 /// Mixer Input that lies in an async context
-
 pub struct AsyncMixerInputEnd {
     inputs: Vec<Arc<Mutex<Input>>>,
     channel_count: usize,
+    buffer_size: usize,
+    sample_rate: usize,
 }
 
 impl MixerTrait for AsyncMixerInputEnd {
@@ -49,12 +52,44 @@ impl MixerTrait for AsyncMixerInputEnd {
     fn channel_count(&self) -> usize {
         self.channel_count
     }
+
+    fn buffer_size(&self) -> usize {
+        self.buffer_size
+    }
+
+    fn sample_rate(&self) -> usize {
+        self.sample_rate
+    }
+
+    fn default(
+        tracks: Vec<Self::Inner>,
+        chcount: usize,
+        bufsize_per_channel: usize,
+        sample_rate: usize,
+    ) -> Self {
+        Self {
+            inputs: tracks,
+            channel_count: chcount,
+            buffer_size: bufsize_per_channel,
+            sample_rate,
+        }
+    }
+
+    fn create_reference_input(inner: Input) -> Option<Self::Inner> {
+        Some(Arc::new(Mutex::new(inner)))
+    }
+
+    fn create_reference_output(inner: Output) -> Option<Self::Inner> {
+        None
+    }
 }
 
 /// Mixer Input, that lies in a sync context
 pub struct SyncMixerInputEnd {
     inputs: Vec<Arc<std::sync::Mutex<Input>>>,
     channel_count: usize,
+    buffer_size: usize,
+    sample_rate: usize,
 }
 
 impl MixerTrait for SyncMixerInputEnd {
@@ -67,12 +102,44 @@ impl MixerTrait for SyncMixerInputEnd {
     fn channel_count(&self) -> usize {
         self.channel_count
     }
+
+    fn buffer_size(&self) -> usize {
+        self.buffer_size
+    }
+
+    fn sample_rate(&self) -> usize {
+        self.sample_rate
+    }
+
+    fn default(
+        tracks: Vec<Self::Inner>,
+        chcount: usize,
+        bufsize_per_channel: usize,
+        sample_rate: usize,
+    ) -> Self {
+        Self {
+            inputs: tracks,
+            channel_count: chcount,
+            buffer_size: bufsize_per_channel,
+            sample_rate,
+        }
+    }
+
+    fn create_reference_input(inner: Input) -> Option<Self::Inner> {
+        Some(Arc::new(std::sync::Mutex::new(inner)))
+    }
+
+    fn create_reference_output(inner: Output) -> Option<Self::Inner> {
+        None
+    }
 }
 
 /// Mixer Output that lies in an async context
 pub struct AsyncMixerOutputEnd {
     channel_count: usize,
     outputs: Vec<Arc<Mutex<HeapCons<f32>>>>,
+    buffer_size: usize,
+    sample_rate: usize,
 }
 
 impl MixerTrait for AsyncMixerOutputEnd {
@@ -85,6 +152,36 @@ impl MixerTrait for AsyncMixerOutputEnd {
     fn channel_count(&self) -> usize {
         self.channel_count
     }
+
+    fn buffer_size(&self) -> usize {
+        self.buffer_size
+    }
+
+    fn sample_rate(&self) -> usize {
+        self.sample_rate
+    }
+
+    fn default(
+        tracks: Vec<Self::Inner>,
+        chcount: usize,
+        bufsize_per_channel: usize,
+        sample_rate: usize,
+    ) -> Self {
+        Self {
+            channel_count: chcount,
+            outputs: tracks,
+            buffer_size: bufsize_per_channel,
+            sample_rate,
+        }
+    }
+
+    fn create_reference_input(inner: Input) -> Option<Self::Inner> {
+        None
+    }
+
+    fn create_reference_output(inner: Output) -> Option<Self::Inner> {
+        Some(Arc::new(Mutex::new(inner)))
+    }
 }
 
 /// Mixer Output that lies in a sync context
@@ -92,6 +189,7 @@ pub struct SyncMixerOutputEnd {
     channel_count: usize,
     buffer_size: usize,
     outputs: Vec<Arc<std::sync::Mutex<HeapCons<f32>>>>,
+    sample_rate: usize,
 }
 
 impl MixerTrait for SyncMixerOutputEnd {
@@ -104,6 +202,36 @@ impl MixerTrait for SyncMixerOutputEnd {
     }
 
     type Inner = SyncRawMixerTrack<Output>;
+
+    fn buffer_size(&self) -> usize {
+        self.buffer_size
+    }
+
+    fn sample_rate(&self) -> usize {
+        self.sample_rate
+    }
+
+    fn default(
+        tracks: Vec<Self::Inner>,
+        chcount: usize,
+        bufsize_per_channel: usize,
+        sample_rate: usize,
+    ) -> Self {
+        Self {
+            channel_count: chcount,
+            buffer_size: bufsize_per_channel,
+            outputs: tracks,
+            sample_rate,
+        }
+    }
+
+    fn create_reference_input(inner: Input) -> Option<Self::Inner> {
+        None
+    }
+
+    fn create_reference_output(inner: Output) -> Option<Self::Inner> {
+        Some(Arc::new(std::sync::Mutex::new(inner)))
+    }
 }
 
 pub enum MixerTrack<T> {
@@ -121,7 +249,6 @@ where
     let mut consumed = 0;
     for o in output_buffer.iter_mut() {
         if let Ok(c) = mixer.get_raw_channel(ch) {
-
             let mut c = c.lock().unwrap();
 
             *o = c.try_pop().unwrap_or(Sample::EQUILIBRIUM);
@@ -144,7 +271,6 @@ where
     let mut consumed = 0;
     for o in output_buffer.iter_mut() {
         if let Ok(c) = mixer.get_raw_channel(ch) {
-
             let mut c = c.lock().await;
 
             *o = c.try_pop().unwrap_or(Sample::EQUILIBRIUM);
@@ -157,10 +283,11 @@ where
     consumed
 }
 
-/// Async Implementation for transfer
+/// Function to transfer a input buffer asynchronously
 pub async fn transfer_async<M>(mixer: &M, input_buffer: &[f32]) -> (usize, usize)
 where
-    M: MixerTrait<Inner = AsyncRawMixerTrack<Input>> {
+    M: MixerTrait<Inner = AsyncRawMixerTrack<Input>>,
+{
     let mut ch = 0;
 
     let mut consumed = 0;
@@ -182,9 +309,11 @@ where
     (consumed, dropped)
 }
 
-pub fn transfer_sync<M>(mixer: &M, input_buffer: &[f32]) -> (usize, usize) 
-where 
-    M: MixerTrait<Inner = SyncRawMixerTrack<Input>> {
+/// Function to transfer the CPAL buffer synchronously
+pub fn transfer_sync<M>(mixer: &M, input_buffer: &[f32]) -> (usize, usize)
+where
+    M: MixerTrait<Inner = SyncRawMixerTrack<Input>>,
+{
     let mut ch = 0;
 
     let mut consumed = 0;
@@ -208,38 +337,28 @@ where
 }
 
 /// Constructs a default server mixer with sync mixer output and async mixer input
-pub fn default_server_mixer(chcount: usize, bufsize_per_channel: usize) -> ServerMixer {
-    let mut inputs = Vec::new();
-    let mut outputs = Vec::new();
-
-    for _ in 0..chcount {
-        let buf = ringbuf::HeapRb::<f32>::new(bufsize_per_channel);
-
-        let (prod, cons) = buf.split();
-        inputs.push(Arc::new(Mutex::new(prod)));
-        outputs.push(Arc::new(std::sync::Mutex::new(cons)));
-    }
-
-    debug!(
-        "Creating Mixer with {} Channels and bufsize of {} bytes",
-        chcount, bufsize_per_channel
-    );
-    (
-        SyncMixerOutputEnd {
-            channel_count: chcount,
-            buffer_size: bufsize_per_channel,
-            //inputs,
-            outputs,
-        },
-        AsyncMixerInputEnd {
-            inputs,
-            channel_count: chcount,
-        },
-    )
+pub fn default_server_mixer(
+    chcount: usize,
+    bufsize_per_channel: usize,
+    sample_rate: usize,
+) -> ServerMixer {
+    custom_mixer(chcount, bufsize_per_channel, sample_rate)
 }
 
 /// Constructs a default client mixer with async mixer output and sync mixer input
-pub fn default_client_mixer(chcount: usize, bufsize_per_channel: usize) -> ClientMixer {
+pub fn default_client_mixer(
+    chcount: usize,
+    bufsize_per_channel: usize,
+    sample_rate: usize,
+) -> ClientMixer {
+    custom_mixer(chcount, bufsize_per_channel, sample_rate)
+}
+
+fn custom_mixer<I, O>(chcount: usize, bufsize_per_channel: usize, sample_rate: usize) -> (O, I)
+where
+    I: MixerTrait,
+    O: MixerTrait,
+{
     let mut inputs = Vec::new();
     let mut outputs = Vec::new();
 
@@ -247,8 +366,8 @@ pub fn default_client_mixer(chcount: usize, bufsize_per_channel: usize) -> Clien
         let buf = ringbuf::HeapRb::<f32>::new(bufsize_per_channel);
 
         let (prod, cons) = buf.split();
-        inputs.push(Arc::new(std::sync::Mutex::new(prod)));
-        outputs.push(Arc::new(Mutex::new(cons)));
+        inputs.push(I::create_reference_input(prod).expect("not an input type"));
+        outputs.push(O::create_reference_output(cons).expect("not an output type"));
     }
 
     debug!(
@@ -256,24 +375,28 @@ pub fn default_client_mixer(chcount: usize, bufsize_per_channel: usize) -> Clien
         chcount, bufsize_per_channel
     );
     (
-        AsyncMixerOutputEnd {
-            channel_count: chcount,
-            //buffer_size: bufsize_per_channel,
-            //inputs,
-            outputs,
-        },
-        SyncMixerInputEnd {
-            inputs,
-            channel_count: chcount,
-        },
+        O::default(outputs, chcount, bufsize_per_channel, sample_rate),
+        I::default(inputs, chcount, bufsize_per_channel, sample_rate),
     )
 }
 
 pub trait MixerTrait {
     type Inner: Clone;
+    fn default(
+        tracks: Vec<Self::Inner>,
+        chcount: usize,
+        bufsize_per_channel: usize,
+        sample_rate: usize,
+    ) -> Self;
+    fn create_reference_input(inner: Input) -> Option<Self::Inner>;
+    fn create_reference_output(inner: Output) -> Option<Self::Inner>;
     fn tracks(&self) -> Vec<Self::Inner>;
 
     fn channel_count(&self) -> usize;
+
+    fn buffer_size(&self) -> usize;
+
+    fn sample_rate(&self) -> usize;
 
     //impl MixerInputEnd {
     fn get_raw_channel(&self, channel: usize) -> MixerResult<Self::Inner> {
@@ -284,10 +407,7 @@ pub trait MixerTrait {
         }
     }
 
-    fn get_channel(
-        &self,
-        selector: MixerTrackSelector,
-    ) -> MixerResult<MixerTrack<Self::Inner>> {
+    fn get_channel(&self, selector: MixerTrackSelector) -> MixerResult<MixerTrack<Self::Inner>> {
         match selector {
             MixerTrackSelector::Stereo(l, r) => Ok(MixerTrack::Stereo(
                 self.get_raw_channel(l)?,
@@ -306,7 +426,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_mixer() {
-        let (mut output, mut input) = default_server_mixer(2, 8);
+        let (mut output, mut input) = default_server_mixer(2, 8, 44100);
 
         for (ch, c) in input.inputs.iter_mut().enumerate() {
             c.lock().await.try_push((ch + 1) as f32).unwrap();

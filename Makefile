@@ -1,4 +1,4 @@
-PHONY: clean build
+PHONY: clean build docs
 
 TARGET ?= aarch64-apple-darwin
 BIN_NAME = audiopipe
@@ -11,6 +11,9 @@ clean:
 
 build:
 	@cargo build --release --target=$(TARGET) --bin $(BIN_NAME)
+
+docs:
+	@cargo doc --release
 
 macos_cli: target/aarch64-apple-darwin/release/audiopipe
 target/aarch64-apple-darwin/release/audiopipe:

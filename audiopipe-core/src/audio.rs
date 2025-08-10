@@ -33,15 +33,15 @@ pub async fn set_global_master_input_mixer(mixer: AsyncMixerOutputEnd) {
 /// returns a suitable cpal config that tries to be as close to the requested specification as possible
 pub fn select_input_device_config(
     device: &cpal::Device,
-    requested_bufsize: u32,
-    requested_samplerate: u32,
+    requested_bufsize: usize,
+    requested_samplerate: usize,
     chcount: usize,
 ) -> SupportedStreamConfig {
     let devs = device.supported_input_configs().unwrap().find(|x| {
         let bsize = *x.buffer_size();
         let bsize_match = match bsize {
             cpal::SupportedBufferSize::Range { min, max } => {
-                min <= requested_bufsize && requested_bufsize <= max
+                min <= requested_bufsize as u32 && requested_bufsize as u32 <= max
             }
             cpal::SupportedBufferSize::Unknown => false,
         };
@@ -52,15 +52,15 @@ pub fn select_input_device_config(
             x.max_sample_rate().0
         );
 
-        return x.min_sample_rate().0 <= requested_samplerate
-            && x.max_sample_rate().0 >= requested_samplerate
+        return x.min_sample_rate().0 <= requested_samplerate as u32
+            && x.max_sample_rate().0 >= requested_samplerate as u32
             && x.channels() >= chcount as u16;
     });
 
     println!("{:?}", devs);
 
     match devs {
-        Some(d) => d.with_sample_rate(cpal::SampleRate(requested_samplerate)),
+        Some(d) => d.with_sample_rate(cpal::SampleRate(requested_samplerate as u32)),
         None => device
             .default_input_config()
             .expect("failed loading default input config"),
@@ -69,15 +69,15 @@ pub fn select_input_device_config(
 
 pub fn select_output_device_config(
     device: &cpal::Device,
-    requested_bufsize: u32,
-    requested_samplerate: u32,
+    requested_bufsize: usize,
+    requested_samplerate: usize,
     chcount: usize,
 ) -> SupportedStreamConfig {
     let devs = device.supported_output_configs().unwrap().find(|x| {
         let bsize = *x.buffer_size();
         let bsize_match = match bsize {
             cpal::SupportedBufferSize::Range { min, max } => {
-                min <= requested_bufsize && requested_bufsize <= max
+                min <= requested_bufsize as u32 && requested_bufsize as u32<= max
             }
             cpal::SupportedBufferSize::Unknown => false,
         };
@@ -88,15 +88,15 @@ pub fn select_output_device_config(
             x.max_sample_rate().0
         );
 
-        return x.min_sample_rate().0 <= requested_samplerate
-            && x.max_sample_rate().0 >= requested_samplerate
+        return x.min_sample_rate().0 <= requested_samplerate as u32
+            && x.max_sample_rate().0 >= requested_samplerate as u32
             && x.channels() >= chcount as u16;
     });
 
     println!("{:?}", devs);
 
     match devs {
-        Some(d) => d.with_sample_rate(cpal::SampleRate(requested_samplerate)),
+        Some(d) => d.with_sample_rate(cpal::SampleRate(requested_samplerate as u32)),
         None => device
             .default_output_config()
             .expect("failed loading default output config"),

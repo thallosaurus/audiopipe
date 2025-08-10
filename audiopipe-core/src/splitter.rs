@@ -22,13 +22,12 @@ impl ToString for SplitterMergerError {
     }
 }
 
-//type InputSampleType: cpal::SizedSample + Send + Pod + Default + Debug + 'static {}
-
 /// Special Iterator over the CPAL Buffer, which returns additional infos about the sample.
 /// Is used to work with the interleaved samples
 /// For example for two channels (L+R): [L,R,L,R,L,R,...] and so on
 /// See [SplitChannelSample]
 #[derive(Default)]
+#[deprecated]
 pub struct ChannelSplitter<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     data: &'a [T],
     selected_channels: Vec<usize>,
@@ -63,6 +62,7 @@ impl<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> ChannelS
 /// Data which gets returned by the ChannelSplitter.
 /// Holds a reference to the buffer data
 #[derive(Debug)]
+#[deprecated]
 pub struct SplitChannelSample<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     pub sample: &'a T,
     pub current_channel: usize,

@@ -20,8 +20,8 @@ async fn main() {
                 sender_commands.target,
                 cli.global.audio_host,
                 cli.global.device,
-                bsize,
-                srate,
+                bsize as usize,
+                srate as usize,
             )
             .await
         }
@@ -29,8 +29,8 @@ async fn main() {
             init_receiver(
                 cli.global.audio_host,
                 cli.global.device,
-                bsize,
-                srate,
+                bsize as usize,
+                srate as usize,
                 recv_commands.addr,
             )
             .await
