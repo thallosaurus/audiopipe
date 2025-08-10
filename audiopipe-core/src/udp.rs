@@ -1,7 +1,7 @@
 use std::{net::SocketAddr, time::SystemTime};
 
 use log::{debug, error, info, trace};
-use ringbuf::traits::{Consumer, Observer, Producer};
+use ringbuf::traits::Producer;
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{self},
@@ -12,7 +12,7 @@ use tokio::{
 use uuid::Uuid;
 
 use crate::{
-    audio::{GLOBAL_MASTER_INPUT_MIXER, GLOBAL_MASTER_OUTPUT_MIXER}, mixer::{transfer, AsyncRawMixerTrack, Input, MixerTrack, MixerTrackSelector, MixerTrait}, MAX_UDP_CLIENT_PAYLOAD_SIZE
+    audio::GLOBAL_MASTER_OUTPUT_MIXER, mixer::{transfer, AsyncRawMixerTrack, Input, MixerTrack}, MAX_UDP_CLIENT_PAYLOAD_SIZE
 };
 
 pub enum UdpServerCommands {
@@ -201,10 +201,10 @@ pub async fn udp_client(
     loop {
         let mut sequence = 0;
 
-        let mut input = input.as_mut().expect("failed opening mixer");
+        let input = input.as_mut().expect("failed opening mixer");
 
         //if !cons.is_empty() {
-        let mut buf: Vec<f32> = vec![0.0f32; MAX_UDP_CLIENT_PAYLOAD_SIZE];
+        let buf: Vec<f32> = vec![0.0f32; MAX_UDP_CLIENT_PAYLOAD_SIZE];
         let consumed = transfer(input, &buf).await;
         //let consumed = cons.pop_slice(&mut buf);
 

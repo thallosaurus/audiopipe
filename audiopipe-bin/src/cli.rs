@@ -2,6 +2,15 @@ use std::str::FromStr;
 
 use clap::{Parser, Subcommand};
 
+/// Re-export of the Cargo Package Name
+pub const PKG_NAME: &str = env!("CARGO_PKG_NAME");
+
+/// Re-export of the Cargo Package Version
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Re-export of the Cargo Package Description
+pub const PKG_DESC: &str = env!("CARGO_PKG_DESCRIPTION");
+
 pub enum ChannelMappingError {
     InvalidStr,
 }
@@ -32,7 +41,7 @@ impl FromStr for ChannelMapping {
 }
 
 #[derive(Parser)]
-#[clap(name = "audiopipe")]
+#[command(version, about = format!("{} (v{})", PKG_NAME, VERSION), long_about = None)]
 pub struct Cli {
 
     /// Enum that holds the subcommand

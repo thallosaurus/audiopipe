@@ -1,8 +1,11 @@
 use clap::Parser;
-use uastreamer::{
-    cli::{Cli, Commands},
+use audiopipe_core::{
     enumerate_devices, init_receiver, init_sender,
 };
+
+use crate::cli::{Cli, Commands};
+
+pub mod cli;
 
 #[tokio::main]
 async fn main() {

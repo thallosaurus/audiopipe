@@ -13,47 +13,44 @@ use hound::WavWriter;
 //use config::{StreamerConfig, get_cpal_config};
 use log::{debug, info};
 
-use crate::{audio::{select_input_device_config, select_output_device_config, setup_master_output}, mixer::default_server_mixer, tcp::new_control_server};
-
+use crate::{
+    audio::{select_input_device_config, select_output_device_config, setup_master_output},
+    mixer::default_server_mixer,
+    tcp::new_control_server,
+};
 
 /// Default Port if none is specified
+#[deprecated]
 pub const DEFAULT_PORT: u16 = 42069;
 
 /// Default Buffer Size if none is specified
+#[deprecated]
 pub const SENDER_BUFFER_SIZE: usize = 1024;
 
-/// Re-export of the Cargo Package Name
-pub const PKG_NAME: &str = env!("CARGO_PKG_NAME");
-
-/// Re-export of the Cargo Package Version
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-
-/// Re-export of the Cargo Package Description
-pub const PKG_DESC: &str = env!("CARGO_PKG_DESCRIPTION");
-
-/// 
+/// maximum permitted size of one UDP payload
 pub const MAX_UDP_CLIENT_PAYLOAD_SIZE: usize = 512;
-
-/// Holds everything needed for command line argument parsing
-//pub mod args;
 
 /// Holds everything related to the audio buffer splitter
 pub mod splitter;
 
-/// Holds the config struct which gets passed around
-//pub mod config;
+// Legacy Logger Implementation
+//#[deprecated]
+//pub mod ualog;
 
-/// Holds all flows this app offers
-//pub mod pooled;
+// holds everything needed for cli arg parsing
+//pub mod cli;
 
-pub mod ualog;
-
-pub mod cli;
-
-pub mod tcp;
-pub mod udp;
+/// holds all audio related stuff
 pub mod audio;
+
+/// implementation of the mixer module
 pub mod mixer;
+
+/// implementation of the server control stack over TCP
+pub mod tcp;
+
+/// implementation of the audio sender oder UDP
+pub mod udp;
 
 /// Defines the behavior of the stream
 ///
@@ -197,22 +194,16 @@ pub async fn init_sender(
     srate: u32,
 ) {
     let (input_device, sconfig) = setup_cpal_input(audio_host, device_name, bsize, srate);
-    let master_stream = audio::setup_master_input(
-        input_device,
-        &sconfig,
-        bsize as usize,
-        vec![0, 1],
-    )
-    .await
-    .expect("couldn't build master output");
+    let master_stream =
+        audio::setup_master_input(input_device, &sconfig, bsize as usize, vec![0, 1])
+            .await
+            .expect("couldn't build master output");
 
     master_stream.play().unwrap();
 
     // TODO Implement reconnection logic here
     // TODO Check buffersize values here
-    tcp::tcp_client(&target, &sconfig, 2, bsize)
-        .await
-        .unwrap();
+    tcp::tcp_client(&target, &sconfig, bsize).await.unwrap();
 }
 
 pub async fn init_receiver(
@@ -335,6 +326,10 @@ fn setup_cpal_input(
 }
 
 pub fn enumerate_devices(audio_host: Option<String>, device_name: Option<String>) {
+    println!("Supported hosts:\n  {:?}", cpal::ALL_HOSTS);
+    let available_hosts = cpal::available_hosts();
+    println!("Available hosts:\n  {:?}", available_hosts);
+
     let host = match audio_host {
         Some(h) => search_for_host(&h).unwrap(),
         None => cpal::default_host(),
@@ -381,7 +376,6 @@ pub fn enumerate_devices(audio_host: Option<String>, device_name: Option<String>
 
     println!("");
 }
-
 
 #[cfg(test)]
 mod tests {

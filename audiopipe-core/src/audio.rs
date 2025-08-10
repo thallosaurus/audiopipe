@@ -7,21 +7,24 @@ use cpal::{
 use log::{debug, trace, warn};
 use once_cell::sync::Lazy;
 use ringbuf::{
-    HeapCons, HeapRb,
+    HeapRb,
     traits::{Producer, Split},
 };
 use tokio::sync::Mutex;
 
 use crate::{mixer::{default_client_mixer, AsyncMixerInputEnd, AsyncMixerOutputEnd, ServerMixer}, splitter::ChannelSplitter};
 
+/// The global output mixer used by the receiver
 pub static GLOBAL_MASTER_OUTPUT_MIXER: Lazy<Arc<Mutex<Option<AsyncMixerInputEnd>>>> =
     Lazy::new(|| Arc::new(Mutex::new(None)));
 
+/// The global input mixer used by the sender
 pub static GLOBAL_MASTER_INPUT_MIXER: Lazy<Arc<Mutex<Option<AsyncMixerOutputEnd>>>> =
     Lazy::new(|| Arc::new(Mutex::new(None)));
 
 //pub static GLOBAL_MASTER_INPUT: Lazy<Mutex<Option<HeapCons<f32>>>> = Lazy::new(|| Mutex::new(None));
 
+/// returns a suitable cpal config that tries to be as close to the requested specification as possible
 pub fn select_input_device_config(
     device: &cpal::Device,
     requested_bufsize: u32,

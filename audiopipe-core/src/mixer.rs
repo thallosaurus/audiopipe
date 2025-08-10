@@ -14,14 +14,6 @@ pub enum MixerTrackSelector {
     Stereo(usize, usize),
 }
 
-/// Paired Mixer Track for processing
-/*pub enum MixerTrack {
-    Mono(AsyncRawInputMixerTrack),
-    Stereo(AsyncRawInputMixerTrack, AsyncRawInputMixerTrack),
-}*/
-
-//type Cpal<T> = Arc<std::sync::Mutex<T>>;
-
 pub type Input = HeapProd<f32>;
 pub type Output = HeapCons<f32>;
 
@@ -35,12 +27,13 @@ pub enum MixerError {
 
 type MixerResult<T> = Result<T, MixerError>;
 
-/// On the receiver side (server side), the cpal stream lies in a sync thread and the mixer in the tokio runtime
+/// On the receiver side (server side), the mixer output must be non-async
 pub type ServerMixer = (SyncMixerOutputEnd, AsyncMixerInputEnd);
 
+/// On the sender side (client side), the mixer input must be non-async
 pub type ClientMixer = (AsyncMixerOutputEnd, SyncMixerInputEnd);
 
-/// The Input Side of the Mixer
+/// Mier Input that lies in an async context
 #[derive(Clone)]
 pub struct AsyncMixerInputEnd {
     inputs: Vec<Arc<Mutex<Input>>>,
@@ -58,6 +51,7 @@ impl MixerTrait for AsyncMixerInputEnd {
     }
 }
 
+/// Mixer Input, that lies in a sync context
 pub struct SyncMixerInputEnd {
     inputs: Vec<Arc<std::sync::Mutex<Input>>>,
     channel_count: usize,
@@ -75,6 +69,7 @@ impl MixerTrait for SyncMixerInputEnd {
     }
 }
 
+/// Mixer Output that lies in an async context
 #[derive(Clone)]
 pub struct AsyncMixerOutputEnd {
     channel_count: usize,
@@ -93,6 +88,7 @@ impl MixerTrait for AsyncMixerOutputEnd {
     }
 }
 
+/// Mixer Output that lies in a sync context
 pub struct SyncMixerOutputEnd {
     channel_count: usize,
     buffer_size: usize,
@@ -262,7 +258,7 @@ pub trait MixerTrait {
 mod tests {
     use ringbuf::traits::Producer;
 
-    use crate::mixer::{MixerTrait, default_server_mixer, mixdown};
+    use crate::mixer::{default_server_mixer, mixdown};
 
     #[tokio::test]
     async fn test_mixer() {

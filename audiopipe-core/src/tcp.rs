@@ -22,7 +22,7 @@ use crate::{audio::GLOBAL_MASTER_OUTPUT_MIXER, mixer::{MixerTrackSelector, Mixer
 /// It gets used when the two instances exchange data
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 
-pub enum TokioTcpControlState {
+pub enum ConnectionControlState {
     /// SampleRate, BufferSize, ChannelCount
     ConnectRequest(u32, u32, usize),
     ConnectResponse(String, u16, usize),
@@ -32,13 +32,13 @@ pub enum TokioTcpControlState {
 
 /// This is the data that gets sent between two instances
 #[derive(Serialize, Deserialize, Debug)]
-pub struct TokioTcpControlPacket {
-    pub state: TokioTcpControlState,
+pub struct ConnectionControl {
+    pub state: ConnectionControlState,
 }
 
 type SharedUdpServerHandles = Arc<Mutex<HashMap<uuid::Uuid, UdpServerHandle>>>;
 
-async fn send_packet(stream: &mut TcpStream, packet: TokioTcpControlPacket) -> io::Result<()> {
+async fn send_packet(stream: &mut TcpStream, packet: ConnectionControl) -> io::Result<()> {
     let json = serde_json::to_vec(&packet).unwrap();
 
     stream.write_all(json.as_slice()).await
@@ -47,7 +47,7 @@ async fn send_packet(stream: &mut TcpStream, packet: TokioTcpControlPacket) -> i
 async fn read_packet(
     stream: &mut TcpStream,
     mut buf: &mut [u8],
-) -> io::Result<TokioTcpControlPacket> {
+) -> io::Result<ConnectionControl> {
     let n = stream.read(&mut buf).await?;
 
     let data = &buf[..n];
@@ -109,7 +109,7 @@ async fn handle_tcp_server_connection(
 
         match json.state {
             // we got an connection request
-            TokioTcpControlState::ConnectRequest(smprt, bufsize, chcount) => {
+            ConnectionControlState::ConnectRequest(smprt, bufsize, chcount) => {
                 // open udp socket here
                 let connection_id = uuid::Uuid::new_v4();
                 let mut h = handles.lock().await;
@@ -128,8 +128,8 @@ async fn handle_tcp_server_connection(
                     
                     info!("new udp connection id {}", connection_id);
                     
-                    let connection_response = TokioTcpControlPacket {
-                        state: TokioTcpControlState::ConnectResponse(
+                    let connection_response = ConnectionControl {
+                        state: ConnectionControlState::ConnectResponse(
                             connection_id.to_string(),
                             local_addr.port(),
                             channel_count,
@@ -155,7 +155,6 @@ async fn handle_tcp_server_connection(
 pub async fn tcp_client(
     target_node_addr: &str,
     config: &StreamConfig,
-    channel_count: usize,
     max_buffer_size: u32,
 ) -> io::Result<()> {
     let ip: Ipv4Addr = target_node_addr.parse().expect("parse failed");
@@ -163,11 +162,11 @@ pub async fn tcp_client(
     let mut stream = TcpStream::connect(target).await?;
     info!("Connected to server {}", target);
 
-    let packet = TokioTcpControlPacket {
-        state: TokioTcpControlState::ConnectRequest(
+    let packet = ConnectionControl {
+        state: ConnectionControlState::ConnectRequest(
             config.sample_rate.0,
             max_buffer_size,
-            channel_count,
+            config.channels as usize,
         ),
     };
     send_packet(&mut stream, packet).await?;
@@ -192,21 +191,21 @@ pub async fn tcp_client(
 
         match json.state {
             // unsupported
-            TokioTcpControlState::ConnectRequest(samplerate, buffersize, chcount) => todo!(),
+            ConnectionControlState::ConnectRequest(samplerate, buffersize, chcount) => todo!(),
 
             // peer has disconnected
-            TokioTcpControlState::Disconnect => {
-                if let Some(mut h) = handle.lock().await.as_mut() {
+            ConnectionControlState::Disconnect => {
+                if let Some(h) = handle.lock().await.as_mut() {
                     h.stop().await.unwrap();
                 }
                 break
             }
 
             // peer has encountered an error
-            TokioTcpControlState::Error(_) => todo!(),
+            ConnectionControlState::Error(_) => todo!(),
 
             // peer has responded to our connection response
-            TokioTcpControlState::ConnectResponse(conn_id, port, chcount) => {
+            ConnectionControlState::ConnectResponse(conn_id, port, chcount) => {
                 let mut _h = handle.lock().await;
 
                 // only connect if there is no connection already
