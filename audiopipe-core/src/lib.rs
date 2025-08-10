@@ -14,8 +14,8 @@ use hound::WavWriter;
 use log::{debug, info};
 
 use crate::{
-    audio::{select_input_device_config, select_output_device_config, setup_master_output},
-    mixer::default_server_mixer,
+    audio::{select_input_device_config, select_output_device_config, set_global_master_input_mixer, set_global_master_output_mixer, setup_master_output},
+    mixer::{default_client_mixer, default_server_mixer},
     tcp::new_control_server,
 };
 
@@ -51,84 +51,6 @@ pub mod tcp;
 
 /// implementation of the audio sender oder UDP
 pub mod udp;
-
-/// Defines the behavior of the stream
-///
-/// Sender: Captures from an audio input stream and sends it over the network
-/// Receiver: Receives from the network and outputs it to a audio output stream
-#[derive(Debug, Clone, Copy)]
-#[deprecated]
-pub enum Direction {
-    Sender,
-    Receiver,
-}
-
-#[deprecated]
-/// Enumerate all available devices on the system
-pub fn enumerate(direction: Direction, host: &Host) -> anyhow::Result<()> {
-    println!("Supported hosts:\n  {:?}", cpal::ALL_HOSTS);
-    let available_hosts = cpal::available_hosts();
-    println!("Available hosts:\n  {:?}", available_hosts);
-
-    println!("Devices:");
-    for device in host.devices()?.into_iter() {
-        match direction {
-            Direction::Sender => {
-                println!(
-                    " - {:?} (Input)",
-                    device.name().unwrap_or("Unknown Device".to_string())
-                );
-                if let Ok(config) = device.supported_input_configs() {
-                    for supported_config in config.into_iter() {
-                        let buf_size = match supported_config.buffer_size() {
-                            SupportedBufferSize::Range { min, max } => format!("{}/{}", min, max),
-                            SupportedBufferSize::Unknown => format!("Unknown"),
-                        };
-
-                        println!(
-                            "   - Buffer Min/Max: {}, Channels: {}, Sample Format: {}, Sample Rate: {:?}",
-                            buf_size,
-                            supported_config.channels(),
-                            supported_config.sample_format(),
-                            supported_config.max_sample_rate()
-                        )
-                    }
-                } else {
-                    println!("   <not supported>");
-                }
-                println!("");
-            }
-            Direction::Receiver => {
-                println!(
-                    " - {:?} (Output)",
-                    device.name().unwrap_or("Unknown Device".to_string())
-                );
-
-                if let Ok(conf) = device.supported_output_configs() {
-                    for supported_config in conf.into_iter() {
-                        let buf_size = match supported_config.buffer_size() {
-                            SupportedBufferSize::Range { min, max } => format!("{}/{}", min, max),
-                            SupportedBufferSize::Unknown => format!("Unknown"),
-                        };
-
-                        println!(
-                            "   - Buffer Min/Max: {}, Channels: {}, Sample Format: {}, Sample Rate: {:?}",
-                            buf_size,
-                            supported_config.channels(),
-                            supported_config.sample_format(),
-                            supported_config.max_sample_rate()
-                        )
-                    }
-                } else {
-                    println!("   <not supported>")
-                }
-                println!("");
-            }
-        };
-    }
-
-    Ok(())
-}
 
 /// Searches for the specified Audio [cpal::HostId] encoded as string
 pub fn search_for_host(name: &str) -> anyhow::Result<Host> {
@@ -194,10 +116,15 @@ pub async fn init_sender(
     srate: u32,
 ) {
     let (input_device, sconfig) = setup_cpal_input(audio_host, device_name, bsize, srate);
+    
+    let mixer = default_client_mixer(sconfig.channels.into(), bsize as usize);
+
     let master_stream =
-        audio::setup_master_input(input_device, &sconfig, bsize as usize, vec![0, 1])
+        audio::setup_master_input(input_device, &sconfig, mixer.1)
             .await
             .expect("couldn't build master output");
+
+    set_global_master_input_mixer(mixer.0).await;
 
     master_stream.play().unwrap();
 
@@ -219,9 +146,11 @@ pub async fn init_receiver(
 
     let mixer = default_server_mixer(chcount as usize, bsize as usize);
 
-    let master_stream = setup_master_output(output_device, sconfig, mixer)
+    let master_stream = setup_master_output(output_device, sconfig, mixer.0)
         .await
         .expect("couldn't build master output");
+
+    set_global_master_output_mixer(mixer.1).await;
 
     master_stream.play().unwrap();
 

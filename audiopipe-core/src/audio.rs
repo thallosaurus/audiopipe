@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{ops::{Deref, DerefMut}, sync::Arc};
 
 use cpal::{
     BuildStreamError, Device, InputCallbackInfo, Sample, Stream, StreamConfig,
@@ -12,15 +12,25 @@ use ringbuf::{
 };
 use tokio::sync::Mutex;
 
-use crate::{mixer::{default_client_mixer, AsyncMixerInputEnd, AsyncMixerOutputEnd, ServerMixer}, splitter::ChannelSplitter};
+use crate::{mixer::{default_client_mixer, mixdown, transfer_async, transfer_sync, AsyncMixerInputEnd, AsyncMixerOutputEnd, ServerMixer, SyncMixerInputEnd, SyncMixerOutputEnd}, splitter::ChannelSplitter};
 
 /// The global output mixer used by the receiver
 pub static GLOBAL_MASTER_OUTPUT_MIXER: Lazy<Arc<Mutex<Option<AsyncMixerInputEnd>>>> =
     Lazy::new(|| Arc::new(Mutex::new(None)));
 
+pub async fn set_global_master_output_mixer(mixer: AsyncMixerInputEnd) {
+    let mut master_mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await;
+    *master_mixer = Some(mixer);
+}
+
 /// The global input mixer used by the sender
 pub static GLOBAL_MASTER_INPUT_MIXER: Lazy<Arc<Mutex<Option<AsyncMixerOutputEnd>>>> =
     Lazy::new(|| Arc::new(Mutex::new(None)));
+
+pub async fn set_global_master_input_mixer(mixer: AsyncMixerOutputEnd) {
+    let mut master_mixer = GLOBAL_MASTER_INPUT_MIXER.lock().await;
+    *master_mixer = Some(mixer);
+}
 
 //pub static GLOBAL_MASTER_INPUT: Lazy<Mutex<Option<HeapCons<f32>>>> = Lazy::new(|| Mutex::new(None));
 
@@ -102,26 +112,19 @@ pub async fn setup_master_output(
     config: StreamConfig,
     //bsize: usize,
     //selected_channels: Vec<u16>,
-    mixer: ServerMixer,
+    mixer: SyncMixerOutputEnd,
 ) -> Result<Stream, BuildStreamError> {
-    //let mut master_out = GLOBAL_MASTER_OUTPUT.lock().await;
-    //master_out = Some(prod);
-
-    let mut master_mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await;
-    *master_mixer = Some(mixer.1);
-    //let mut mixer = default_mixer(config.channels as usize, bsize);
-
-    let mixer = Arc::new(std::sync::Mutex::new(mixer.0));
-
+    let mixer = Arc::new(std::sync::Mutex::new(mixer));    
+    
     device.build_output_stream(
         &config,
         move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+            let mixer = mixer.lock().expect("mixer not available");
             //trace!("Callback wants {:?} ", data.len());
-            let m = mixer.clone();
-
-            let mixer = m.lock().expect("mixer not available");
+            
+            mixdown(mixer.deref(), data);
             //.mixdown(data);
-        let consumed = 0;
+            let consumed = 0;
             trace!("Consumed {} bytes", consumed);
         },
         move |err| {},
@@ -132,57 +135,18 @@ pub async fn setup_master_output(
 pub async fn setup_master_input(
     device: Device,
     config: &StreamConfig,
-    bsize: usize,
-    selected_channels: Vec<usize>,
+    mixer: SyncMixerInputEnd,
 ) -> Result<Stream, BuildStreamError> {
-    let rbuf = HeapRb::<f32>::new(bsize * config.channels as usize);
-    let (mut prod, cons) = rbuf.split();
-
-    //let mut master_in = GLOBAL_MASTER_INPUT.lock().await;
-    //*master_in = Some(cons);
-
-    let mixer = default_client_mixer(selected_channels.len(), bsize);
-
-    let mut master_mixer = GLOBAL_MASTER_INPUT_MIXER.lock().await;
-    *master_mixer = Some(mixer.0);
-
     let chcount = config.channels;
+    let mixer = Arc::new(std::sync::Mutex::new(mixer));
 
     device.build_input_stream(
         &config,
         move |data: &[f32], _: &InputCallbackInfo| {
-            let splitter = ChannelSplitter::new(
-                data,
-                //streamer_config.selected_channels.clone(),
-                selected_channels.clone(),
-                chcount,
-            )
-            .unwrap();
-
-            let mut dropped = 0;
-            // Iterate through the input buffer and save data
-            for s in splitter {
-                if s.on_selected_channel {
-                    if !cfg!(test) {
-                        if let Ok(()) = prod.try_push(*s.sample) {
-                            //write_debug(writer, *s.sample);
-                        } else {
-                            dropped += 1;
-                            //udp_urge_channel.send(true).unwrap();
-
-                            // Urge the UDP thread to send the buffer immediately
-                            //udp_urge_channel.send(true).unwrap();
-
-                            // drop remaining samples
-                            //break;
-                            //return consumed
-                        }
-                        //output.try_push(*s.sample).unwrap();
-                    } else {
-                        prod.try_push(Sample::EQUILIBRIUM).unwrap();
-                    }
-                }
-            }
+            let m = mixer.lock().expect("failed to open mixer");
+            let consumed = transfer_sync(m.deref(), data);
+            let dropped = data.len() - consumed;
+            
             if dropped > 0 {
                 warn!("OVERFLOW - Dropped {} Samples", dropped);
             }

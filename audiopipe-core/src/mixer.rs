@@ -42,7 +42,7 @@ pub struct AsyncMixerInputEnd {
 
 impl MixerTrait for AsyncMixerInputEnd {
     type Inner = AsyncRawMixerTrack<Input>;
-    fn tracks(&mut self) -> Vec<Self::Inner> {
+    fn tracks(&self) -> Vec<Self::Inner> {
         self.inputs.clone()
     }
 
@@ -60,7 +60,7 @@ pub struct SyncMixerInputEnd {
 impl MixerTrait for SyncMixerInputEnd {
     type Inner = SyncRawMixerTrack<Input>;
 
-    fn tracks(&mut self) -> Vec<Self::Inner> {
+    fn tracks(&self) -> Vec<Self::Inner> {
         self.inputs.clone()
     }
 
@@ -79,7 +79,7 @@ pub struct AsyncMixerOutputEnd {
 impl MixerTrait for AsyncMixerOutputEnd {
     type Inner = AsyncRawMixerTrack<Output>;
 
-    fn tracks(&mut self) -> Vec<Self::Inner> {
+    fn tracks(&self) -> Vec<Self::Inner> {
         self.outputs.clone()
     }
 
@@ -96,7 +96,7 @@ pub struct SyncMixerOutputEnd {
 }
 
 impl MixerTrait for SyncMixerOutputEnd {
-    fn tracks(&mut self) -> Vec<Self::Inner> {
+    fn tracks(&self) -> Vec<Self::Inner> {
         self.outputs.clone()
     }
 
@@ -112,8 +112,8 @@ pub enum MixerTrack<T> {
     Stereo(T, T),
 }
 
-/// Writes the
-pub fn mixdown<M>(mixer: &mut M, output_buffer: &mut [f32]) -> usize
+/// Sync Implementation for Mixdown
+pub fn mixdown<M>(mixer: &M, output_buffer: &mut [f32]) -> usize
 where
     M: MixerTrait<Inner = SyncRawMixerTrack<Output>>,
 {
@@ -135,7 +135,8 @@ where
     consumed
 }
 
-pub async fn transfer<M>(mixer: &mut M, input_buffer: &[f32]) -> usize
+/// Async Implementation for transfer
+pub async fn transfer_async<M>(mixer: &M, input_buffer: &[f32]) -> usize
 where
     M: MixerTrait<Inner = AsyncRawMixerTrack<Input>>,
 {
@@ -146,6 +147,30 @@ where
     for o in input_buffer.iter() {
         if let Ok(c) = mixer.get_raw_channel(ch) {
             let mut c = c.lock().await;
+
+            if let Ok(_) = c.try_push(*o) {
+                consumed += 1;
+            } else {
+                dropped += 1;
+            }
+
+            ch = (ch + 1) % mixer.channel_count();
+        }
+    }
+
+    consumed
+}
+
+pub fn transfer_sync<M>(mixer: &M, input_buffer: &[f32]) -> usize 
+where 
+    M: MixerTrait<Inner = SyncRawMixerTrack<Input>> {
+    let mut ch = 0;
+
+    let mut consumed = 0;
+    let mut dropped = 0;
+    for o in input_buffer.iter() {
+        if let Ok(c) = mixer.get_raw_channel(ch) {
+            let mut c = c.lock().expect("failed to open mixer");
 
             if let Ok(_) = c.try_push(*o) {
                 consumed += 1;
@@ -223,12 +248,12 @@ pub fn default_client_mixer(chcount: usize, bufsize_per_channel: usize) -> Clien
 
 pub trait MixerTrait {
     type Inner: Clone;
-    fn tracks(&mut self) -> Vec<Self::Inner>;
+    fn tracks(&self) -> Vec<Self::Inner>;
 
     fn channel_count(&self) -> usize;
 
     //impl MixerInputEnd {
-    fn get_raw_channel(&mut self, channel: usize) -> MixerResult<Self::Inner> {
+    fn get_raw_channel(&self, channel: usize) -> MixerResult<Self::Inner> {
         if channel < self.channel_count() {
             Ok(self.tracks()[channel].clone())
         } else {
