@@ -4,10 +4,11 @@ use cpal::Sample;
 use log::debug;
 use ringbuf::{
     HeapCons, HeapProd,
-    traits::{Consumer, Split},
+    traits::{Consumer, Producer, Split},
 };
 use tokio::sync::Mutex;
 
+/// Input enum which selects one or two channels together
 pub enum MixerTrackSelector {
     Mono(usize),
     Stereo(usize, usize),
@@ -34,6 +35,11 @@ pub enum MixerError {
 
 type MixerResult<T> = Result<T, MixerError>;
 
+/// On the receiver side (server side), the cpal stream lies in a sync thread and the mixer in the tokio runtime
+pub type ServerMixer = (SyncMixerOutputEnd, AsyncMixerInputEnd);
+
+pub type ClientMixer = (AsyncMixerOutputEnd, SyncMixerInputEnd);
+
 /// The Input Side of the Mixer
 #[derive(Clone)]
 pub struct AsyncMixerInputEnd {
@@ -52,10 +58,40 @@ impl MixerTrait for AsyncMixerInputEnd {
     }
 }
 
-//type SharedInputMixer = Arc<Mutex<InputMixer>>;
+pub struct SyncMixerInputEnd {
+    inputs: Vec<Arc<std::sync::Mutex<Input>>>,
+    channel_count: usize,
+}
 
-/// On the receiver side (server side), the cpal stream lies in a sync thread and the mixer in the tokio runtime
-pub type ServerMixer = (SyncMixerOutputEnd, AsyncMixerInputEnd);
+impl MixerTrait for SyncMixerInputEnd {
+    type Inner = SyncRawMixerTrack<Input>;
+
+    fn tracks(&mut self) -> Vec<Self::Inner> {
+        self.inputs.clone()
+    }
+
+    fn channel_count(&self) -> usize {
+        self.channel_count
+    }
+}
+
+#[derive(Clone)]
+pub struct AsyncMixerOutputEnd {
+    channel_count: usize,
+    outputs: Vec<Arc<Mutex<HeapCons<f32>>>>,
+}
+
+impl MixerTrait for AsyncMixerOutputEnd {
+    type Inner = AsyncRawMixerTrack<Output>;
+
+    fn tracks(&mut self) -> Vec<Self::Inner> {
+        self.outputs.clone()
+    }
+
+    fn channel_count(&self) -> usize {
+        self.channel_count
+    }
+}
 
 pub struct SyncMixerOutputEnd {
     channel_count: usize,
@@ -71,7 +107,7 @@ impl MixerTrait for SyncMixerOutputEnd {
     fn channel_count(&self) -> usize {
         self.channel_count
     }
-    
+
     type Inner = SyncRawMixerTrack<Output>;
 }
 
@@ -83,17 +119,44 @@ pub enum MixerTrack<T> {
 /// Writes the
 pub fn mixdown<M>(mixer: &mut M, output_buffer: &mut [f32]) -> usize
 where
-    M: MixerTrait<Inner = SyncRawMixerTrack<Output>>
+    M: MixerTrait<Inner = SyncRawMixerTrack<Output>>,
 {
     let mut ch = 0;
 
     let mut consumed = 0;
     for o in output_buffer.iter_mut() {
         if let Ok(c) = mixer.get_raw_channel(ch) {
+
             let mut c = c.lock().unwrap();
 
             *o = c.try_pop().unwrap_or(Sample::EQUILIBRIUM);
             consumed += 1;
+
+            ch = (ch + 1) % mixer.channel_count();
+        }
+    }
+
+    consumed
+}
+
+pub async fn transfer<M>(mixer: &mut M, input_buffer: &[f32]) -> usize
+where
+    M: MixerTrait<Inner = AsyncRawMixerTrack<Input>>,
+{
+    let mut ch = 0;
+
+    let mut consumed = 0;
+    let mut dropped = 0;
+    for o in input_buffer.iter() {
+        if let Ok(c) = mixer.get_raw_channel(ch) {
+            let mut c = c.lock().await;
+
+            if let Ok(_) = c.try_push(*o) {
+                consumed += 1;
+            } else {
+                dropped += 1;
+            }
+            //            *o = c.try_pop().unwrap_or(Sample::EQUILIBRIUM);
 
             ch = (ch + 1) % mixer.channel_count();
         }
@@ -132,6 +195,36 @@ pub fn default_server_mixer(chcount: usize, bufsize_per_channel: usize) -> Serve
     )
 }
 
+pub fn default_client_mixer(chcount: usize, bufsize_per_channel: usize) -> ClientMixer {
+    let mut inputs = Vec::new();
+    let mut outputs = Vec::new();
+
+    for _ in 0..chcount {
+        let buf = ringbuf::HeapRb::<f32>::new(bufsize_per_channel);
+
+        let (prod, cons) = buf.split();
+        inputs.push(Arc::new(std::sync::Mutex::new(prod)));
+        outputs.push(Arc::new(Mutex::new(cons)));
+    }
+
+    debug!(
+        "Creating Mixer with {} Channels and bufsize of {} bytes",
+        chcount, bufsize_per_channel
+    );
+    (
+        AsyncMixerOutputEnd {
+            channel_count: chcount,
+            //buffer_size: bufsize_per_channel,
+            //inputs,
+            outputs,
+        },
+        SyncMixerInputEnd {
+            inputs,
+            channel_count: chcount,
+        },
+    )
+}
+
 pub trait MixerTrait {
     type Inner: Clone;
     fn tracks(&mut self) -> Vec<Self::Inner>;
@@ -151,7 +244,10 @@ pub trait MixerTrait {
         self.tracks().len()
     }*/
 
-    fn get_channel(&mut self, selector: MixerTrackSelector) -> MixerResult<MixerTrack<Self::Inner>> {
+    fn get_channel(
+        &mut self,
+        selector: MixerTrackSelector,
+    ) -> MixerResult<MixerTrack<Self::Inner>> {
         match selector {
             MixerTrackSelector::Stereo(l, r) => Ok(MixerTrack::Stereo(
                 self.get_raw_channel(l)?,
@@ -166,7 +262,7 @@ pub trait MixerTrait {
 mod tests {
     use ringbuf::traits::Producer;
 
-    use crate::mixer::{default_server_mixer, mixdown, MixerTrait};
+    use crate::mixer::{MixerTrait, default_server_mixer, mixdown};
 
     #[tokio::test]
     async fn test_mixer() {

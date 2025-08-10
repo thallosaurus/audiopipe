@@ -12,12 +12,15 @@ use ringbuf::{
 };
 use tokio::sync::Mutex;
 
-use crate::{mixer::{AsyncMixerInputEnd, ServerMixer}, splitter::ChannelSplitter};
+use crate::{mixer::{default_client_mixer, AsyncMixerInputEnd, AsyncMixerOutputEnd, ServerMixer}, splitter::ChannelSplitter};
 
 pub static GLOBAL_MASTER_OUTPUT_MIXER: Lazy<Arc<Mutex<Option<AsyncMixerInputEnd>>>> =
     Lazy::new(|| Arc::new(Mutex::new(None)));
 
-pub static GLOBAL_MASTER_INPUT: Lazy<Mutex<Option<HeapCons<f32>>>> = Lazy::new(|| Mutex::new(None));
+pub static GLOBAL_MASTER_INPUT_MIXER: Lazy<Arc<Mutex<Option<AsyncMixerOutputEnd>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(None)));
+
+//pub static GLOBAL_MASTER_INPUT: Lazy<Mutex<Option<HeapCons<f32>>>> = Lazy::new(|| Mutex::new(None));
 
 pub fn select_input_device_config(
     device: &cpal::Device,
@@ -132,8 +135,13 @@ pub async fn setup_master_input(
     let rbuf = HeapRb::<f32>::new(bsize * config.channels as usize);
     let (mut prod, cons) = rbuf.split();
 
-    let mut master_in = GLOBAL_MASTER_INPUT.lock().await;
-    *master_in = Some(cons);
+    //let mut master_in = GLOBAL_MASTER_INPUT.lock().await;
+    //*master_in = Some(cons);
+
+    let mixer = default_client_mixer(selected_channels.len(), bsize);
+
+    let mut master_mixer = GLOBAL_MASTER_INPUT_MIXER.lock().await;
+    *master_mixer = Some(mixer.0);
 
     let chcount = config.channels;
 
