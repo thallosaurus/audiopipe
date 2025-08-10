@@ -1,18 +1,14 @@
-use std::{ops::{Deref, DerefMut}, sync::Arc};
+use std::{ops::Deref, sync::Arc};
 
 use cpal::{
-    BuildStreamError, Device, InputCallbackInfo, Sample, Stream, StreamConfig,
+    BuildStreamError, Device, InputCallbackInfo, Stream, StreamConfig,
     SupportedStreamConfig, traits::DeviceTrait,
 };
 use log::{debug, trace, warn};
 use once_cell::sync::Lazy;
-use ringbuf::{
-    HeapRb,
-    traits::{Producer, Split},
-};
 use tokio::sync::Mutex;
 
-use crate::{mixer::{default_client_mixer, mixdown, transfer_async, transfer_sync, AsyncMixerInputEnd, AsyncMixerOutputEnd, ServerMixer, SyncMixerInputEnd, SyncMixerOutputEnd}, splitter::ChannelSplitter};
+use crate::mixer::{mixdown, transfer_sync, AsyncMixerInputEnd, AsyncMixerOutputEnd, SyncMixerInputEnd, SyncMixerOutputEnd};
 
 /// The global output mixer used by the receiver
 pub static GLOBAL_MASTER_OUTPUT_MIXER: Lazy<Arc<Mutex<Option<AsyncMixerInputEnd>>>> =
