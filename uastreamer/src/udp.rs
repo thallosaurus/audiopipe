@@ -196,16 +196,16 @@ pub async fn udp_client(
     info!("Starting UDP Sender");
     let mut input = GLOBAL_MASTER_OUTPUT_MIXER
         .lock()
-        .await.unwrap();
+        .await;
 
     loop {
         let mut sequence = 0;
 
-        let mut input = input.clone();
+        let mut input = input.as_mut().expect("failed opening mixer");
 
         //if !cons.is_empty() {
         let mut buf: Vec<f32> = vec![0.0f32; MAX_UDP_CLIENT_PAYLOAD_SIZE];
-        let consumed = transfer(&mut input, &buf).await;
+        let consumed = transfer(input, &buf).await;
         //let consumed = cons.pop_slice(&mut buf);
 
         let data: &[u8] = bytemuck::try_cast_slice(&buf[..consumed]).unwrap();
