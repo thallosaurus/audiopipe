@@ -16,7 +16,7 @@ use tokio::{
 };
 use uuid::Uuid;
 
-use crate::{audio::GLOBAL_MASTER_OUTPUT_MIXER, mixer::{MixerTrackSelector, MixerTrait}, udp::{UdpClientHandle, UdpServerHandle}};
+use crate::{audio::GLOBAL_MASTER_OUTPUT_MIXER, mixer::{MixerTrackSelector, MixerTrait}, streamer::{UdpClientHandle, UdpServerHandle}};
 
 /// This enum states the type of the tcp control packet.
 /// It gets used when the two instances exchange data
@@ -114,7 +114,7 @@ async fn handle_tcp_server_connection(
                 let connection_id = uuid::Uuid::new_v4();
                 let mut h = handles.lock().await;
 
-                let mut mixer = mixer.clone().expect("failed to open master output mixer");
+                let mixer = mixer.as_ref().expect("failed to open master output mixer");
 
                 // TODO choose selected channels here
                 if let Ok(channel) = mixer.get_channel(MixerTrackSelector::Stereo(0, 1)) {

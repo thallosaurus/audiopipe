@@ -15,7 +15,7 @@ use log::{debug, info};
 use crate::{
     audio::{select_input_device_config, select_output_device_config, set_global_master_input_mixer, set_global_master_output_mixer, setup_master_output},
     mixer::{default_client_mixer, default_server_mixer},
-    tcp::new_control_server,
+    control::new_control_server,
 };
 
 /// Default Port if none is specified
@@ -46,10 +46,10 @@ pub mod audio;
 pub mod mixer;
 
 /// implementation of the server control stack over TCP
-pub mod tcp;
+pub mod control;
 
 /// implementation of the audio sender oder UDP
-pub mod udp;
+pub mod streamer;
 
 /// Searches for the specified Audio [cpal::HostId] encoded as string
 pub fn search_for_host(name: &str) -> anyhow::Result<Host> {
@@ -129,7 +129,7 @@ pub async fn init_sender(
 
     // TODO Implement reconnection logic here
     // TODO Check buffersize values here
-    tcp::tcp_client(&target, &sconfig, bsize).await.unwrap();
+    control::tcp_client(&target, &sconfig, bsize).await.unwrap();
 }
 
 pub async fn init_receiver(

@@ -252,7 +252,7 @@ mod tests {
 
     use crate::{
         mixer::{MixerTrackSelector, MixerTrait, default_server_mixer},
-        udp::{udp_client, udp_server},
+        streamer::{udp_client, udp_server},
     };
 
     #[tokio::test]

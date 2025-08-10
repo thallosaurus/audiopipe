@@ -8,7 +8,7 @@ use log::{debug, trace, warn};
 use once_cell::sync::Lazy;
 use tokio::sync::Mutex;
 
-use crate::mixer::{mixdown, transfer_sync, AsyncMixerInputEnd, AsyncMixerOutputEnd, SyncMixerInputEnd, SyncMixerOutputEnd};
+use crate::mixer::{mixdown_sync, transfer_sync, AsyncMixerInputEnd, AsyncMixerOutputEnd, SyncMixerInputEnd, SyncMixerOutputEnd};
 
 /// The global output mixer used by the receiver
 pub static GLOBAL_MASTER_OUTPUT_MIXER: Lazy<Arc<Mutex<Option<AsyncMixerInputEnd>>>> =
@@ -118,7 +118,7 @@ pub async fn setup_master_output(
             let mixer = mixer.lock().expect("mixer not available");
             //trace!("Callback wants {:?} ", data.len());
             
-            mixdown(mixer.deref(), data);
+            mixdown_sync(mixer.deref(), data);
             //.mixdown(data);
             let consumed = 0;
             trace!("Consumed {} bytes", consumed);

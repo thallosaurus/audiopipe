@@ -18,7 +18,7 @@ pub type Input = HeapProd<f32>;
 pub type Output = HeapCons<f32>;
 
 pub type AsyncRawMixerTrack<I> = Arc<Mutex<I>>;
-pub type SyncRawMixerTrack<O> = Arc<std::sync::Mutex<O>>;
+pub type SyncRawMixerTrack<I> = Arc<std::sync::Mutex<I>>;
 
 pub enum MixerError {
     InputChannelNotFound,
@@ -33,8 +33,8 @@ pub type ServerMixer = (SyncMixerOutputEnd, AsyncMixerInputEnd);
 /// On the sender side (client side), the mixer input must be non-async
 pub type ClientMixer = (AsyncMixerOutputEnd, SyncMixerInputEnd);
 
-/// Mier Input that lies in an async context
-#[derive(Clone)]
+/// Mixer Input that lies in an async context
+
 pub struct AsyncMixerInputEnd {
     inputs: Vec<Arc<Mutex<Input>>>,
     channel_count: usize,
@@ -70,7 +70,6 @@ impl MixerTrait for SyncMixerInputEnd {
 }
 
 /// Mixer Output that lies in an async context
-#[derive(Clone)]
 pub struct AsyncMixerOutputEnd {
     channel_count: usize,
     outputs: Vec<Arc<Mutex<HeapCons<f32>>>>,
@@ -113,7 +112,7 @@ pub enum MixerTrack<T> {
 }
 
 /// Sync Implementation for Mixdown
-pub fn mixdown<M>(mixer: &M, output_buffer: &mut [f32]) -> usize
+pub fn mixdown_sync<M>(mixer: &M, output_buffer: &mut [f32]) -> usize
 where
     M: MixerTrait<Inner = SyncRawMixerTrack<Output>>,
 {
@@ -135,11 +134,33 @@ where
     consumed
 }
 
+/// Async Implementation for Mixdown
+pub async fn mixdown_async<M>(mixer: &M, output_buffer: &mut [f32]) -> usize
+where
+    M: MixerTrait<Inner = AsyncRawMixerTrack<Output>>,
+{
+    let mut ch = 0;
+
+    let mut consumed = 0;
+    for o in output_buffer.iter_mut() {
+        if let Ok(c) = mixer.get_raw_channel(ch) {
+
+            let mut c = c.lock().await;
+
+            *o = c.try_pop().unwrap_or(Sample::EQUILIBRIUM);
+            consumed += 1;
+
+            ch = (ch + 1) % mixer.channel_count();
+        }
+    }
+
+    consumed
+}
+
 /// Async Implementation for transfer
 pub async fn transfer_async<M>(mixer: &M, input_buffer: &[f32]) -> (usize, usize)
 where
-    M: MixerTrait<Inner = AsyncRawMixerTrack<Input>>,
-{
+    M: MixerTrait<Inner = AsyncRawMixerTrack<Input>> {
     let mut ch = 0;
 
     let mut consumed = 0;
@@ -186,6 +207,7 @@ where
     (consumed, dropped)
 }
 
+/// Constructs a default server mixer with sync mixer output and async mixer input
 pub fn default_server_mixer(chcount: usize, bufsize_per_channel: usize) -> ServerMixer {
     let mut inputs = Vec::new();
     let mut outputs = Vec::new();
@@ -216,6 +238,7 @@ pub fn default_server_mixer(chcount: usize, bufsize_per_channel: usize) -> Serve
     )
 }
 
+/// Constructs a default client mixer with async mixer output and sync mixer input
 pub fn default_client_mixer(chcount: usize, bufsize_per_channel: usize) -> ClientMixer {
     let mut inputs = Vec::new();
     let mut outputs = Vec::new();
@@ -261,12 +284,8 @@ pub trait MixerTrait {
         }
     }
 
-    /*fn get_channel_count(&self) -> usize {
-        self.tracks().len()
-    }*/
-
     fn get_channel(
-        &mut self,
+        &self,
         selector: MixerTrackSelector,
     ) -> MixerResult<MixerTrack<Self::Inner>> {
         match selector {
@@ -283,7 +302,7 @@ pub trait MixerTrait {
 mod tests {
     use ringbuf::traits::Producer;
 
-    use crate::mixer::{default_server_mixer, mixdown};
+    use crate::mixer::{default_server_mixer, mixdown_sync};
 
     #[tokio::test]
     async fn test_mixer() {
@@ -294,9 +313,17 @@ mod tests {
         }
 
         let mut master_buf = vec![0.0f32; 16];
-        mixdown(&mut output, &mut master_buf);
+        mixdown_sync(&mut output, &mut master_buf);
         //output.mixdown(&mut master_buf);
 
         assert_eq!(&master_buf[..4], vec![1.0, 2.0, 0.0, 0.0]);
+    }
+
+    #[tokio::test]
+    async fn test_mixer_ends() {
+        let channels = 16;
+        {
+            // TODO add tests here
+        }
     }
 }

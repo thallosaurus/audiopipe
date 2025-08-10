@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "audiopipe",
+    "audiopipe-bin",
     "audiopipe-core",
     #"test-app/src-tauri"
 ]
