@@ -1,7 +1,5 @@
 use std::{
-    collections::HashMap,
-    net::{Ipv4Addr, SocketAddr},
-    sync::Arc,
+    collections::HashMap, net::{Ipv4Addr, SocketAddr}, str::FromStr, sync::Arc
 };
 
 use cpal::StreamConfig;
@@ -16,8 +14,9 @@ use tokio::{
     },
     task::JoinHandle,
 };
+use uuid::Uuid;
 
-use crate::{audio::GLOBAL_MASTER_OUTPUT_MIXER, mixer::MixerTrackSelector, udp::{UdpClientHandle, UdpServerHandle}};
+use crate::{audio::GLOBAL_MASTER_OUTPUT_MIXER, mixer::{MixerTrackSelector, MixerTrait}, udp::{UdpClientHandle, UdpServerHandle}};
 
 /// This enum states the type of the tcp control packet.
 /// It gets used when the two instances exchange data
@@ -189,12 +188,19 @@ pub async fn tcp_client(
 
         debug!("< Read Packet: {:?}", json);
 
+        let handle = handle.clone();
+
         match json.state {
             // unsupported
             TokioTcpControlState::ConnectRequest(samplerate, buffersize, chcount) => todo!(),
 
             // peer has disconnected
-            TokioTcpControlState::Disconnect => {}
+            TokioTcpControlState::Disconnect => {
+                if let Some(mut h) = handle.lock().await.as_mut() {
+                    h.stop().await.unwrap();
+                }
+                break
+            }
 
             // peer has encountered an error
             TokioTcpControlState::Error(_) => todo!(),
@@ -211,14 +217,20 @@ pub async fn tcp_client(
                         "Connection to peer {} with connection id {} successful",
                         target, conn_id
                     );
-                    *_h = Some(
-                        UdpClientHandle::start_audio_stream_client(
-                            target,
-                            max_buffer_size,
-                            chcount,
-                        )
-                        .await,
-                    );
+
+                    if let Ok(conn_id) = Uuid::from_str(&conn_id.as_str()) {
+                        *_h = Some(
+                            UdpClientHandle::start_audio_stream_client(
+                                target,
+                                max_buffer_size,
+                                chcount,
+                                conn_id
+                            )
+                            .await,
+                        );
+                    } else {
+                        // invalid connection id
+                    }
                 } else {
                     // there is already a connection
                     // TODO implement errors
@@ -226,6 +238,7 @@ pub async fn tcp_client(
             }
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]

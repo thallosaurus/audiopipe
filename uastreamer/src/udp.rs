@@ -1,6 +1,6 @@
 use std::{net::SocketAddr, time::SystemTime};
 
-use log::{error, info, trace};
+use log::{debug, error, info, trace};
 use ringbuf::traits::{Consumer, Observer, Producer};
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -9,8 +9,9 @@ use tokio::{
     sync::mpsc::{self, error::SendError},
     task::JoinHandle,
 };
+use uuid::Uuid;
 
-use crate::{audio::GLOBAL_MASTER_INPUT, mixer::MixerTrack};
+use crate::{audio::GLOBAL_MASTER_INPUT, mixer::{AsyncRawMixerTrack, MixerTrack, Input}, MAX_UDP_CLIENT_PAYLOAD_SIZE};
 
 pub enum UdpServerCommands {
     Stop,
@@ -31,7 +32,7 @@ impl UdpServerHandle {
         self.channel.send(UdpServerCommands::Stop).await
     }
 
-    pub async fn start_audio_stream_server(ch: MixerTrack) -> UdpServerHandle
+    pub async fn start_audio_stream_server(ch: MixerTrack<AsyncRawMixerTrack<Input>>) -> UdpServerHandle
     {
         let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
         let local_addr = sock.local_addr().unwrap();
@@ -53,6 +54,7 @@ pub struct UdpClientHandle {
     //_handle: Pin<Box<dyn Future<Output = io::Result<()>> + Send>>,
     _handle: JoinHandle<io::Result<()>>,
     channel: mpsc::Sender<UdpClientCommands>,
+    connection_id: Uuid
 }
 
 impl UdpClientHandle {
@@ -61,6 +63,7 @@ impl UdpClientHandle {
         //smprt: u32,
         bufsize: u32,
         chcount: usize,
+        connection_id: Uuid
     ) -> UdpClientHandle {
         let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
 
@@ -74,9 +77,10 @@ impl UdpClientHandle {
             //_handle: Box::pin(udp_client(sock, bufsize * chcount as u32, r)),
             _handle: tokio::spawn(udp_client(sock, bufsize * chcount as u32, r)),
             channel: s,
+            connection_id
         }
     }
-    async fn stop(&self) -> Result<(), SendError<UdpClientCommands>> {
+    pub async fn stop(&self) -> Result<(), SendError<UdpClientCommands>> {
         self.channel.send(UdpClientCommands::Stop).await
     }
 }
@@ -93,7 +97,7 @@ pub async fn udp_server(
     sock: UdpSocket,
     mut ch: mpsc::Receiver<UdpServerCommands>,
     //mixer: SharedInputMixer,
-    raw_ch: MixerTrack,
+    raw_ch: MixerTrack<AsyncRawMixerTrack<Input>>,
 ) -> io::Result<()> {
     info!("Starting UDP Receiver");
     // start connection
@@ -137,7 +141,7 @@ pub async fn udp_server(
 /// Function that gets called when the udp socket received a new AudioPacket
 ///
 /// Writes to the master mixer
-async fn process_udp_server_output(packet: TokioUdpAudioPacket, channel: &MixerTrack) {
+async fn process_udp_server_output(packet: TokioUdpAudioPacket, channel: &MixerTrack<AsyncRawMixerTrack<Input>>) {
     // Convert the buffered network samples to the specified sample format
     let converted_samples: &[f32] = bytemuck::try_cast_slice(&packet.data).unwrap();
     //.map_err(|e| UdpError::CastingError(e))?;
@@ -147,7 +151,7 @@ async fn process_udp_server_output(packet: TokioUdpAudioPacket, channel: &MixerT
     let mut consumed = 0;
 
     match channel {
-        MixerTrack::Mono(mutex) => todo!(),
+        MixerTrack::Mono(ch) => todo!(),
         MixerTrack::Stereo(l, r) => {
             let mut b = 0;
 
@@ -175,9 +179,10 @@ async fn process_udp_server_output(packet: TokioUdpAudioPacket, channel: &MixerT
             }
         }
     }
+    debug!("{} consumed, {} dropped", consumed, dropped);
 }
 
-const MAX_UDP_CLIENT_PAYLOAD_SIZE: usize = 512;
+
 
 pub async fn udp_client(
     sock: UdpSocket,
@@ -236,7 +241,7 @@ mod tests {
         sync::{Mutex, mpsc},
     };
 
-    use crate::{mixer::{default_mixer, MixerTrackSelector}, udp::{udp_client, udp_server}};
+    use crate::{mixer::{default_server_mixer, MixerTrackSelector, MixerTrait}, udp::{udp_client, udp_server}};
 
     #[tokio::test]
     async fn tcp_server_test() {
@@ -249,7 +254,7 @@ mod tests {
 
         let (s, r) = mpsc::channel(1);
 
-        let mixer = default_mixer(2, 1024);
+        let mixer = default_server_mixer(2, 1024);
         let input_mixer = Arc::new(Mutex::new(mixer.1));
 
         let handle = tokio::spawn(async move {

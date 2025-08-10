@@ -13,7 +13,7 @@ use hound::WavWriter;
 //use config::{StreamerConfig, get_cpal_config};
 use log::{debug, info};
 
-use crate::{audio::{select_input_device_config, select_output_device_config, setup_master_output}, mixer::default_mixer, tcp::new_control_server};
+use crate::{audio::{select_input_device_config, select_output_device_config, setup_master_output}, mixer::default_server_mixer, tcp::new_control_server};
 
 
 /// Default Port if none is specified
@@ -30,6 +30,9 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Re-export of the Cargo Package Description
 pub const PKG_DESC: &str = env!("CARGO_PKG_DESCRIPTION");
+
+/// 
+pub const MAX_UDP_CLIENT_PAYLOAD_SIZE: usize = 512;
 
 /// Holds everything needed for command line argument parsing
 //pub mod args;
@@ -193,7 +196,6 @@ pub async fn init_sender(
     bsize: u32,
     srate: u32,
 ) {
-
     let (input_device, sconfig) = setup_cpal_input(audio_host, device_name, bsize, srate);
     let master_stream = audio::setup_master_input(
         input_device,
@@ -224,7 +226,7 @@ pub async fn init_receiver(
 
     let chcount = sconfig.channels;
 
-    let mixer = default_mixer(chcount as usize, bsize as usize);
+    let mixer = default_server_mixer(chcount as usize, bsize as usize);
 
     let master_stream = setup_master_output(output_device, sconfig, mixer)
         .await
