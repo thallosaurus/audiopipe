@@ -205,7 +205,7 @@ pub async fn udp_client(
 
         //if !cons.is_empty() {
         let buf: Vec<f32> = vec![0.0f32; MAX_UDP_CLIENT_PAYLOAD_SIZE];
-        let consumed = transfer_async(input, &buf).await;
+        let (consumed, dropped) = transfer_async(input, &buf).await;
         //let consumed = cons.pop_slice(&mut buf);
 
         let data: &[u8] = bytemuck::try_cast_slice(&buf[..consumed]).unwrap();

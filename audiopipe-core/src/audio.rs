@@ -140,11 +140,15 @@ pub async fn setup_master_input(
         &config,
         move |data: &[f32], _: &InputCallbackInfo| {
             let m = mixer.lock().expect("failed to open mixer");
-            let consumed = transfer_sync(m.deref(), data);
+            let (consumed, dropped) = transfer_sync(m.deref(), data);
             let dropped = data.len() - consumed;
             
+            if dropped > consumed {
+                warn!("OVERFLOW - More samples dropped ({}) than consumed ({})", dropped, consumed);
+            }
+            
             if dropped > 0 {
-                warn!("OVERFLOW - Dropped {} Samples", dropped);
+                trace!("OVERFLOW - Dropped {} Samples", dropped);
             }
             //udp_urge_channel.send(true).unwrap();
         },

@@ -136,7 +136,7 @@ where
 }
 
 /// Async Implementation for transfer
-pub async fn transfer_async<M>(mixer: &M, input_buffer: &[f32]) -> usize
+pub async fn transfer_async<M>(mixer: &M, input_buffer: &[f32]) -> (usize, usize)
 where
     M: MixerTrait<Inner = AsyncRawMixerTrack<Input>>,
 {
@@ -158,10 +158,10 @@ where
         }
     }
 
-    consumed
+    (consumed, dropped)
 }
 
-pub fn transfer_sync<M>(mixer: &M, input_buffer: &[f32]) -> usize 
+pub fn transfer_sync<M>(mixer: &M, input_buffer: &[f32]) -> (usize, usize) 
 where 
     M: MixerTrait<Inner = SyncRawMixerTrack<Input>> {
     let mut ch = 0;
@@ -183,7 +183,7 @@ where
         }
     }
 
-    consumed
+    (consumed, dropped)
 }
 
 pub fn default_server_mixer(chcount: usize, bufsize_per_channel: usize) -> ServerMixer {
