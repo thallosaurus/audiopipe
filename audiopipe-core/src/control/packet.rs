@@ -1,13 +1,14 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{control::{BufferSize, Port, SampleRate}, mixer::MixerTrackSelector};
+use crate::{control::{BufferSize, Port, SampleRate}, mixer::MixerTrackSelector, streamer::receiver::UdpServerHandleError};
 
 #[repr(u8)]
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ControlError {
     GeneralError,
     StreamIdNotFound,
+    AudioStreamError(UdpServerHandleError)
 }
 
 #[derive(Serialize, Deserialize, Debug)]

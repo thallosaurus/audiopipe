@@ -96,28 +96,18 @@ pub async fn new_control_server(sock_addr: String) -> io::Result<()> {
                                     error!("{}", err);
                                 },
                             }
-
-                            /*let connection_response = ConnectionControl {
-                                state: ConnectionControlState::ConnectResponse(
-                                    connection_id.to_string(),
-                                    local_addr.port(),
-                                    channel_count,
-                                ),
-                            };*/
-
-                            //}
                         }
                         ControlRequest::CloseStream(uuid) => {
                             if let Some(h) = handles.lock().await.remove(&uuid) {
-                                h.stop().await;
-                                send_packet(&mut socket, ControlResponse::Ok).await;
+                                h.stop().await.unwrap();
+                                send_packet(&mut socket, ControlResponse::Ok).await.unwrap();
                             } else {
                                 error!("Couldn't find stream for connection Id {}", uuid);
                                 send_packet(
                                     &mut socket,
                                     ControlResponse::Error(ControlError::StreamIdNotFound),
                                 )
-                                .await;
+                                .await.unwrap();
                             }
                         }
                     }

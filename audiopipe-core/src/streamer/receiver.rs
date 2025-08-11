@@ -1,7 +1,11 @@
-use std::{fmt::{Display, Write}, net::SocketAddr, sync::Arc};
+use std::{
+    fmt::{Display, Write},
+    net::SocketAddr,
+    sync::Arc,
+};
 
 use log::{debug, error, info, trace};
-use ringbuf::traits::Producer;
+use serde::{Deserialize, Serialize};
 use tokio::{
     io,
     net::UdpSocket,
@@ -10,21 +14,32 @@ use tokio::{
 };
 
 use crate::{
-    audio::GLOBAL_MASTER_OUTPUT_MIXER, mixer::{write_to_mixer_async, MixerTrackSelector}, streamer::packet::{AudioPacket}
+    audio::GLOBAL_MASTER_OUTPUT_MIXER,
+    mixer::{MixerTrackSelector, write_to_mixer_async},
+    streamer::packet::AudioPacket,
 };
 
 pub enum UdpServerCommands {
     Stop,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub enum UdpServerHandleError {
-    TokioError(io::Error)
+    TokioError(String),
+    CastingError,
+    SerializationError,
 }
 
 impl Display for UdpServerHandleError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            UdpServerHandleError::TokioError(error) => f.write_fmt(format_args!("tokio error: {}", error)),
+            UdpServerHandleError::TokioError(error) => {
+                f.write_fmt(format_args!("tokio error: {}", error))
+            }
+            UdpServerHandleError::CastingError => f.write_fmt(format_args!("casting error")),
+            UdpServerHandleError::SerializationError => {
+                f.write_fmt(format_args!("serialization error"))
+            }
         }
     }
 }
@@ -45,10 +60,14 @@ impl UdpServerHandle {
 
     pub async fn start_audio_stream_server(
         //ch: &AsyncMixerInputEnd,
-        sel: MixerTrackSelector
+        sel: MixerTrackSelector,
     ) -> ReceiverResult<UdpServerHandle> {
-        let sock = UdpSocket::bind("0.0.0.0:0").await.map_err(|e|UdpServerHandleError::TokioError(e))?;
-        let local_addr = sock.local_addr().map_err(|e|UdpServerHandleError::TokioError(e))?;
+        let sock = UdpSocket::bind("0.0.0.0:0")
+            .await
+            .map_err(|e| UdpServerHandleError::TokioError(e.to_string()))?;
+        let local_addr = sock
+            .local_addr()
+            .map_err(|e| UdpServerHandleError::TokioError(e.to_string()))?;
         info!("local udp addr: {}", local_addr);
 
         let (s, r) = mpsc::channel(1);
@@ -62,39 +81,61 @@ impl UdpServerHandle {
     }
 }
 
+async fn handle_datagram(len: usize, mut buf: Box<[u8]>) -> ReceiverResult<AudioPacket> {
+    // whatever
+    /*let mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await;
+    let mixer = mixer.as_ref().expect("failed to open mixer");*/
+
+    trace!("UDP Packet Length: {:?}", len);
+    Ok(bincode2::deserialize(&mut buf[..len])
+        .map_err(|e| UdpServerHandleError::SerializationError)?)
+    //.map_err(|e| UdpError::DeserializeError(e)).unwrap();
+    /*trace!(
+        "Received Packet from {}, Length: {}, {:?}",
+        addr, len, packet
+    );*/
+}
+
 pub async fn udp_server(
     sock: UdpSocket,
     mut ch: mpsc::Receiver<UdpServerCommands>,
     //mixer: SharedInputMixer,
     //raw_ch: &AsyncMixerInputEnd,
-    stream_track_selector: MixerTrackSelector
+    stream_track_selector: MixerTrackSelector,
 ) -> io::Result<()> {
     info!("Starting UDP Receiver");
     // start connection
-    let mut buf = vec![0; 10000 as usize].into_boxed_slice();
     
     loop {
+        let mut buf = vec![0; 10000 as usize].into_boxed_slice();
         tokio::select! {
             result = sock.recv_from(&mut buf) => {
                 match result {
                     Ok((len, addr)) => {
                         //info!("Received {:?} bytes from {:?}, Payload: {:?}", len, addr, data);
 
-                                                    // whatever
-                        let mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await;
-                        let mixer = mixer.as_ref().expect("failed to open mixer");
-                        
-                        trace!("UDP Packet Length: {:?}", len);
-                        let packet: AudioPacket = bincode2::deserialize(&mut buf[..len]).unwrap();
-                        //.map_err(|e| UdpError::DeserializeError(e)).unwrap();
-                        trace!("Received Packet from {}, Length: {}, {:?}", addr, len, packet);
-                        
-                        let data: &[f32] = bytemuck::try_cast_slice(&packet.payload).unwrap();
+                        match handle_datagram(len, buf).await {
+                            Ok(packet) => {
 
-                        write_to_mixer_async(mixer, data, stream_track_selector).await;
+                                trace!("UDP Packet Length: {:?}", len);
+                                trace!("Received Packet from {}, Length: {}, {:?}", addr, len, packet);
+
+                                // whatever
+                                let mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await;
+                                let mixer = mixer.as_ref().expect("failed to open mixer");
+
+                                let data: &[f32] = bytemuck::try_cast_slice(&packet.payload).unwrap();
+
+                                //.map_err(|e| UdpError::DeserializeError(e)).unwrap();
 
 
-                            
+                                write_to_mixer_async(mixer, data, stream_track_selector).await;
+                            },
+                            Err(e) => {
+                                
+                            }
+                        }
+
                         // TODO Get Output Channel for server
                         //insert_audio_samples(packet, &raw_ch).await;
 

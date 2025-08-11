@@ -27,7 +27,7 @@ pub static GLOBAL_MASTER_INPUT_MIXER: Lazy<Arc<Mutex<Option<AsyncMixerOutputEnd>
 
 /// Sets the global master input mixer - See [GLOBAL_MASTER_INPUT_MIXER]
 pub async fn set_global_master_input_mixer(mixer: AsyncMixerOutputEnd) {
-    let mut master_mixer = GLOBAL_MASTER_INPUT_MIXER.lock().await;
+    let mut master_mixer = GLOBAL_MASTER_INPUT_MIXER.lock().await;;
     *master_mixer = Some(mixer);
 }
 
@@ -127,6 +127,8 @@ pub async fn setup_master_output(
             let consumed = 0;
             trace!("Consumed {} bytes", consumed);
         },
+
+        // TODO error handling
         move |err| {},
         None,
     )
@@ -138,7 +140,6 @@ pub async fn setup_master_input(
     mixer: SyncMixerInputEnd,
     master_sel: MixerTrackSelector
 ) -> Result<Stream, BuildStreamError> {
-    let chcount = config.channels;
     let mixer = Arc::new(std::sync::Mutex::new(mixer));
 
     //builds input stream that we then 
@@ -147,7 +148,6 @@ pub async fn setup_master_input(
         move |data: &[f32], _: &InputCallbackInfo| {
             let m = mixer.lock().expect("failed to open mixer");
             let (consumed, dropped) = write_to_mixer_sync(m.deref(), data, master_sel);
-            let dropped = data.len() - consumed;
             
             if dropped > consumed {
                 warn!("OVERFLOW - More samples dropped ({}) than consumed ({})", dropped, consumed);
@@ -158,6 +158,8 @@ pub async fn setup_master_input(
             }
             //udp_urge_channel.send(true).unwrap();
         },
+
+        // TODO error handling
         move |err| {},
         None,
     )

@@ -13,8 +13,12 @@ use hound::WavWriter;
 use log::{debug, info};
 
 use crate::{
-    audio::{select_input_device_config, select_output_device_config, set_global_master_input_mixer, set_global_master_output_mixer, setup_master_output}, control::{client::tcp_client, server::new_control_server}, mixer::{default_client_mixer, default_server_mixer, MixerTrackSelector}
-
+    audio::{
+        select_input_device_config, select_output_device_config, set_global_master_input_mixer,
+        set_global_master_output_mixer, setup_master_output,
+    },
+    control::{client::tcp_client, server::new_control_server},
+    mixer::{MixerTrackSelector, default_client_mixer, default_server_mixer},
 };
 
 /// maximum permitted size of one UDP payload
@@ -56,10 +60,10 @@ pub async fn init_sender(
     device_name: Option<String>,
     bsize: usize,
     srate: usize,
-    master_track_selector: MixerTrackSelector
+    master_track_selector: MixerTrackSelector,
 ) {
     let (input_device, sconfig) = setup_cpal_input(audio_host, device_name, bsize, srate);
-    
+
     let mixer = default_client_mixer(sconfig.channels.into(), bsize, srate);
 
     let master_stream =
@@ -82,7 +86,7 @@ pub async fn init_receiver(
     bsize: usize,
     srate: usize,
     addr: Option<String>,
-    master_track_selector: MixerTrackSelector
+    master_track_selector: MixerTrackSelector,
 ) {
     let (output_device, sconfig) = setup_cpal_output(audio_host, device_name, bsize, srate);
 
@@ -98,11 +102,9 @@ pub async fn init_receiver(
 
     master_stream.play().unwrap();
 
-    new_control_server(
-        String::from(addr.unwrap_or("0.0.0.0".to_string())),
-    )
-    .await
-    .unwrap();
+    new_control_server(String::from(addr.unwrap_or("0.0.0.0".to_string())))
+        .await
+        .unwrap();
     //server.block();
 }
 

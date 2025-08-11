@@ -20,8 +20,10 @@ use crate::{
 };
 
 async fn send_packet(stream: &mut TcpStream, packet: ControlRequest) -> io::Result<()> {
+    debug!("Sending Packet: {:?}", packet);
     let json = serde_json::to_vec(&packet).unwrap();
-
+    trace!("{:?}", json);
+    
     stream.write_all(json.as_slice()).await
 }
 
@@ -44,22 +46,14 @@ pub async fn tcp_client(
 ) -> io::Result<()> {
     let ip: Ipv4Addr = target_node_addr.parse().expect("parse failed");
     let target = SocketAddr::new(std::net::IpAddr::V4(ip), 6789);
+    debug!("Connecting to {}", target);
+
     let mut stream = TcpStream::connect(target).await?;
     info!("Connected to server {}", target);
 
-    /*let packet = ConnectionControl {
-        state: ConnectionControlState::ConnectRequest(
-            config.sample_rate.0,
-            max_buffer_size,
-            config.channels as usize,
-        ),
-    };*/
-
+    // connection packet
     let packet = ControlRequest::OpenStream(crate::mixer::MixerTrackSelector::Stereo(0, 1));
     send_packet(&mut stream, packet).await?;
-
-    //let mut json = serde_json::to_vec(&packet)?;
-    //stream.write_all(json.as_mut_slice()).await.unwrap();
 
     // Stores the current udp connection
     let handle: Arc<Mutex<Option<UdpClientHandle>>> = Arc::new(Mutex::new(None));
