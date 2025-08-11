@@ -1,14 +1,4 @@
-use std::{collections::HashMap, pin::Pin, sync::Arc, task::Poll};
 
-use serde::{Deserialize, Serialize};
-use tokio::{
-    io::{self},
-    sync::{
-        Mutex,
-        mpsc::{self},
-    },
-    task::{JoinError, JoinHandle},
-};
 
 pub mod client;
 mod packet;
@@ -32,7 +22,7 @@ mod tests {
         audio::{set_global_master_input_mixer, set_global_master_output_mixer},
         control::{client::TcpClient, server::TcpServer},
         mixer::{
-            MixerTrackSelector, default_client_mixer, default_server_mixer, tests::debug_mixer,
+            default_client_mixer, tests::debug_mixer,
         },
         streamer::{receiver::tests::dummy_receiver, sender::tests::dummy_sender},
         tests::init,

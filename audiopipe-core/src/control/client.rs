@@ -1,5 +1,5 @@
 use std::{
-    net::{Ipv4Addr, SocketAddr}, pin::Pin, sync::Arc, task::Poll
+    net::{Ipv4Addr, SocketAddr}, sync::Arc, task::Poll
 };
 
 use log::{debug, error, info, trace};

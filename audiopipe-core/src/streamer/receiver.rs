@@ -163,9 +163,9 @@ pub(crate) mod tests {
 
     use log::debug;
     use tokio::{io, sync::mpsc};
-    use uuid::Uuid;
+    
 
-    use crate::{mixer::MixerTrackSelector, streamer::{receiver::AudioReceiverHandle, sender::AudioSenderHandle}};
+    use crate::{mixer::MixerTrackSelector, streamer::receiver::AudioReceiverHandle};
 
     pub async fn dummy_receiver(
         _: MixerTrackSelector,

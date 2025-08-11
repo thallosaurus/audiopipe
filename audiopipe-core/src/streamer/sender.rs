@@ -121,13 +121,10 @@ pub async fn udp_client(
 pub(crate) mod tests {
     use std::net::SocketAddr;
 
-    use tokio::{
-        io,
-        sync::mpsc::{self, Sender},
-    };
+    use tokio::sync::mpsc::{self};
     use uuid::Uuid;
 
-    use crate::{mixer::MixerTrackSelector, streamer::sender::AudioSenderHandle};
+    use crate::streamer::sender::AudioSenderHandle;
 
     pub async fn dummy_sender(
         addr: SocketAddr,
