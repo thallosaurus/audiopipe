@@ -8,12 +8,14 @@ use log::{debug, trace, warn};
 use once_cell::sync::Lazy;
 use tokio::sync::Mutex;
 
-use crate::mixer::{mixdown_sync, transfer_sync, AsyncMixerInputEnd, AsyncMixerOutputEnd, SyncMixerInputEnd, SyncMixerOutputEnd};
+use crate::mixer::{read_from_mixer_sync, write_to_mixer_sync, AsyncMixerInputEnd, AsyncMixerOutputEnd, MixerTrackSelector, SyncMixerInputEnd, SyncMixerOutputEnd};
 
-/// The global output mixer used by the receiver
+/// The global output mixer used by the receiver to output audio
+/// To create a default mixer pair, use [crate::mixer::default_server_mixer] or [crate::mixer::default_client_mixer]
 pub static GLOBAL_MASTER_OUTPUT_MIXER: Lazy<Arc<Mutex<Option<AsyncMixerInputEnd>>>> =
     Lazy::new(|| Arc::new(Mutex::new(None)));
 
+/// Sets the global master input mixer - See [GLOBAL_MASTER_OUTPUT_MIXER]
 pub async fn set_global_master_output_mixer(mixer: AsyncMixerInputEnd) {
     let mut master_mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await;
     *master_mixer = Some(mixer);
@@ -23,6 +25,7 @@ pub async fn set_global_master_output_mixer(mixer: AsyncMixerInputEnd) {
 pub static GLOBAL_MASTER_INPUT_MIXER: Lazy<Arc<Mutex<Option<AsyncMixerOutputEnd>>>> =
     Lazy::new(|| Arc::new(Mutex::new(None)));
 
+/// Sets the global master input mixer - See [GLOBAL_MASTER_INPUT_MIXER]
 pub async fn set_global_master_input_mixer(mixer: AsyncMixerOutputEnd) {
     let mut master_mixer = GLOBAL_MASTER_INPUT_MIXER.lock().await;
     *master_mixer = Some(mixer);
@@ -109,6 +112,7 @@ pub async fn setup_master_output(
     //bsize: usize,
     //selected_channels: Vec<u16>,
     mixer: SyncMixerOutputEnd,
+    master_sel: MixerTrackSelector
 ) -> Result<Stream, BuildStreamError> {
     let mixer = Arc::new(std::sync::Mutex::new(mixer));    
     
@@ -118,7 +122,7 @@ pub async fn setup_master_output(
             let mixer = mixer.lock().expect("mixer not available");
             //trace!("Callback wants {:?} ", data.len());
             
-            mixdown_sync(mixer.deref(), data);
+            read_from_mixer_sync(mixer.deref(), data, master_sel);
             //.mixdown(data);
             let consumed = 0;
             trace!("Consumed {} bytes", consumed);
@@ -132,15 +136,17 @@ pub async fn setup_master_input(
     device: Device,
     config: &StreamConfig,
     mixer: SyncMixerInputEnd,
+    master_sel: MixerTrackSelector
 ) -> Result<Stream, BuildStreamError> {
     let chcount = config.channels;
     let mixer = Arc::new(std::sync::Mutex::new(mixer));
 
+    //builds input stream that we then 
     device.build_input_stream(
         &config,
         move |data: &[f32], _: &InputCallbackInfo| {
             let m = mixer.lock().expect("failed to open mixer");
-            let (consumed, dropped) = transfer_sync(m.deref(), data);
+            let (consumed, dropped) = write_to_mixer_sync(m.deref(), data, master_sel);
             let dropped = data.len() - consumed;
             
             if dropped > consumed {

@@ -17,7 +17,11 @@ pub struct TokioUdpAudioPacket {
 pub struct AudioPacketHeader {
     pub connection_id: Uuid,
     pub timestamp: SystemTime,
+
+    /// The sample rate of the packet
     pub sample_rate: usize,
+
+    /// How many channels this packet holds
     pub channels: usize
 }
 

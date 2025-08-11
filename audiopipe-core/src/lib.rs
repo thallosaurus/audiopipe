@@ -13,7 +13,7 @@ use hound::WavWriter;
 use log::{debug, info};
 
 use crate::{
-    audio::{select_input_device_config, select_output_device_config, set_global_master_input_mixer, set_global_master_output_mixer, setup_master_output}, control::{client::tcp_client, server::new_control_server}, mixer::{default_client_mixer, default_server_mixer}
+    audio::{select_input_device_config, select_output_device_config, set_global_master_input_mixer, set_global_master_output_mixer, setup_master_output}, control::{client::tcp_client, server::new_control_server}, mixer::{default_client_mixer, default_server_mixer, MixerTrackSelector}
 
 };
 
@@ -21,14 +21,7 @@ use crate::{
 pub const MAX_UDP_CLIENT_PAYLOAD_SIZE: usize = 512;
 
 /// Holds everything related to the audio buffer splitter
-pub mod splitter;
-
-// Legacy Logger Implementation
-//#[deprecated]
-//pub mod ualog;
-
-// holds everything needed for cli arg parsing
-//pub mod cli;
+//pub mod splitter;
 
 /// holds all audio related stuff
 pub mod audio;
@@ -104,13 +97,14 @@ pub async fn init_sender(
     device_name: Option<String>,
     bsize: usize,
     srate: usize,
+    master_track_selector: MixerTrackSelector
 ) {
     let (input_device, sconfig) = setup_cpal_input(audio_host, device_name, bsize, srate);
     
     let mixer = default_client_mixer(sconfig.channels.into(), bsize, srate);
 
     let master_stream =
-        audio::setup_master_input(input_device, &sconfig, mixer.1)
+        audio::setup_master_input(input_device, &sconfig, mixer.1, master_track_selector)
             .await
             .expect("couldn't build master output");
 
@@ -129,18 +123,19 @@ pub async fn init_receiver(
     bsize: usize,
     srate: usize,
     addr: Option<String>,
+    master_track_selector: MixerTrackSelector
 ) {
     let (output_device, sconfig) = setup_cpal_output(audio_host, device_name, bsize, srate);
 
     let chcount = sconfig.channels;
 
-    let mixer = default_server_mixer(chcount as usize, bsize, srate);;
+    let (output, input) = default_server_mixer(chcount as usize, bsize, srate);
 
-    let master_stream = setup_master_output(output_device, sconfig, mixer.0)
+    let master_stream = setup_master_output(output_device, sconfig, output, master_track_selector)
         .await
         .expect("couldn't build master output");
 
-    set_global_master_output_mixer(mixer.1).await;
+    set_global_master_output_mixer(input).await;
 
     master_stream.play().unwrap();
 

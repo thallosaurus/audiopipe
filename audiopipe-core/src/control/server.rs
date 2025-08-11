@@ -1,14 +1,25 @@
-use std::{collections::HashMap, net::{Ipv4Addr, SocketAddr}, sync::Arc};
+use std::{
+    collections::HashMap,
+    net::{Ipv4Addr, SocketAddr},
+    sync::Arc,
+};
 
 use log::{debug, error, info, trace};
-use tokio::{io::{self, AsyncReadExt, AsyncWriteExt}, net::{TcpListener, TcpStream}, sync::Mutex};
+use tokio::{
+    io::{self, AsyncReadExt, AsyncWriteExt},
+    net::{TcpListener, TcpStream},
+    sync::Mutex,
+};
 
 use crate::{
     audio::GLOBAL_MASTER_OUTPUT_MIXER,
     control::{
-        packet::{ControlError, ControlRequest, ControlResponse}, BufferSize, ChannelCount, ConnectionControl, ConnectionControlResult, ConnectionControlState, Port, SharedUdpServerHandles
+        BufferSize, ChannelCount, ConnectionControl, ConnectionControlResult,
+        ConnectionControlState, Port, SharedUdpServerHandles,
+        packet::{ControlError, ControlRequest, ControlResponse},
     },
-    mixer::MixerTrait, streamer::receiver::UdpServerHandle,
+    mixer::MixerTrait,
+    streamer::receiver::UdpServerHandle,
 };
 
 async fn send_packet(stream: &mut TcpStream, packet: ControlResponse) -> io::Result<()> {
@@ -42,7 +53,6 @@ pub async fn new_control_server(sock_addr: String) -> io::Result<()> {
     info!("Server Listening");
     loop {
         if let Ok((mut socket, _client_addr)) = listen.accept().await {
-
             // copy handle for udp streams
             let handles = Arc::clone(&handles);
 
@@ -52,37 +62,52 @@ pub async fn new_control_server(sock_addr: String) -> io::Result<()> {
                 //let handles = child_handles.lock().await;
                 loop {
                     let handles = Arc::clone(&handles);
-                    
+
                     // TODO tcp error handling
                     match read_packet(&mut socket, &mut buf).await.unwrap() {
                         ControlRequest::OpenStream(mixer_track_selector) => {
                             let connection_id = uuid::Uuid::new_v4();
-                            
+
+                            // whatever
                             let mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await;
                             let mixer = mixer.as_ref().expect("failed to open mixer");
 
-                            if let Ok(channel) = mixer.get_channel(mixer_track_selector) {
-                                let handle =
-                                    UdpServerHandle::start_audio_stream_server(channel).await;
+                            //if let Ok(channel) = mixer.get_channel(mixer_track_selector) {
+                            //let handle =
+                            match UdpServerHandle::start_audio_stream_server(mixer_track_selector)
+                                .await
+                            {
+                                Ok(handle) => {
+                                    let local_addr = handle.local_addr.clone();
+                                    handles.lock().await.insert(connection_id, handle);
 
-                                let local_addr = handle.local_addr.clone();
-                                handles.lock().await.insert(connection_id, handle);
-
-                                info!("new udp connection id {}", connection_id);
-
-                                /*let connection_response = ConnectionControl {
-                                    state: ConnectionControlState::ConnectResponse(
-                                        connection_id.to_string(),
-                                        local_addr.port(),
-                                        channel_count,
-                                    ),
-                                };*/
-                                send_packet(
-                                    &mut socket,
-                                    ControlResponse::Stream(connection_id, local_addr.port(), mixer.buffer_size(), mixer.sample_rate()),
-                                )
-                                .await;
+                                    info!("new udp connection id {}", connection_id);
+                                    send_packet(
+                                        &mut socket,
+                                        ControlResponse::Stream(
+                                            connection_id,
+                                            local_addr.port(),
+                                            mixer.buffer_size(),
+                                            mixer.sample_rate(),
+                                        ),
+                                    )
+                                    .await
+                                    .unwrap();
+                                }
+                                Err(err) => {
+                                    error!("{}", err);
+                                },
                             }
+
+                            /*let connection_response = ConnectionControl {
+                                state: ConnectionControlState::ConnectResponse(
+                                    connection_id.to_string(),
+                                    local_addr.port(),
+                                    channel_count,
+                                ),
+                            };*/
+
+                            //}
                         }
                         ControlRequest::CloseStream(uuid) => {
                             if let Some(h) = handles.lock().await.remove(&uuid) {
