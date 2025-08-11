@@ -1,10 +1,9 @@
 use std::{
     fmt::{Display, Write},
     net::SocketAddr,
-    sync::Arc,
 };
 
-use log::{debug, error, info, trace};
+use log::{error, info, trace};
 use serde::{Deserialize, Serialize};
 use tokio::{
     io,

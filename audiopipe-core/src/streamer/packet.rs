@@ -1,4 +1,4 @@
-use std::time::{SystemTime, SystemTimeError};
+use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

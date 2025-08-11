@@ -1,10 +1,9 @@
 use std::{
     net::SocketAddr,
-    sync::Arc,
     time::{Duration, SystemTime},
 };
 
-use log::{info, trace};
+use log::info;
 use tokio::{
     io,
     net::UdpSocket,
@@ -15,7 +14,6 @@ use uuid::Uuid;
 
 use crate::{
     audio::GLOBAL_MASTER_INPUT_MIXER,
-    mixer::AsyncMixerOutputEnd,
     streamer::packet::{AudioPacket, AudioPacketHeader},
 };
 

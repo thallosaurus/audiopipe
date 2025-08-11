@@ -9,7 +9,6 @@ use ringbuf::{
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use crate::streamer::{create_wav_writer, DebugWavWriter};
 
 /// Input enum which selects one or two channels together
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
@@ -536,11 +535,11 @@ pub trait MixerTrait {
 
 #[cfg(test)]
 mod tests {
-    use ringbuf::traits::Producer;
+    
 
     use crate::mixer::{
         AsyncMixerInputEnd, AsyncMixerOutputEnd, MixerTrackSelector, SyncMixerInputEnd,
-        SyncMixerOutputEnd, custom_mixer, default_server_mixer, read_from_mixer_async,
+        SyncMixerOutputEnd, custom_mixer, read_from_mixer_async,
         read_from_mixer_sync, write_to_mixer_async, write_to_mixer_sync,
     };
 

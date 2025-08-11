@@ -1,22 +1,17 @@
 use std::{
     net::{Ipv4Addr, SocketAddr},
-    str::FromStr,
     sync::Arc,
 };
 
-use cpal::StreamConfig;
 use log::{debug, info, trace};
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
     sync::Mutex,
 };
-use uuid::Uuid;
 
 use crate::{
-    audio::GLOBAL_MASTER_OUTPUT_MIXER, control::{
-        packet::{ControlRequest, ControlResponse}, ConnectionControl, ConnectionControlState
-    }, streamer::sender::UdpClientHandle
+    control::packet::{ControlRequest, ControlResponse}, streamer::sender::UdpClientHandle
 };
 
 async fn send_packet(stream: &mut TcpStream, packet: ControlRequest) -> io::Result<()> {

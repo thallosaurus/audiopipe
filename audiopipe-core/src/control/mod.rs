@@ -1,23 +1,17 @@
 use std::{
     collections::HashMap,
-    net::{Ipv4Addr, SocketAddr},
-    str::FromStr,
     sync::Arc,
 };
 
-use cpal::StreamConfig;
-use log::{debug, error, info, trace};
 use serde::{Deserialize, Serialize};
 use tokio::{
-    io::{self, AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
+    io::{self},
     sync::{
         Mutex,
         mpsc::{self},
     },
     task::JoinHandle,
 };
-use uuid::Uuid;
 
 mod packet;
 pub mod server;
@@ -29,12 +23,7 @@ pub enum ConnectionControlError {
     GeneralError,
 }
 
-use crate::{
-    audio::GLOBAL_MASTER_OUTPUT_MIXER,
-    control::packet::{ControlError, ControlRequest, ControlResponse},
-    mixer::{MixerTrackSelector, MixerTrait}, streamer::receiver::UdpServerHandle,
-
-};
+use crate::streamer::receiver::UdpServerHandle;
 
 type BufferSize = usize;
 type SampleRate = usize;
