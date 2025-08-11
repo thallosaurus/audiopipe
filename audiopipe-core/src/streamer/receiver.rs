@@ -1,4 +1,4 @@
-use std::{fmt::Display, net::SocketAddr};
+use std::{fmt::Display, net::SocketAddr, pin::Pin, task::Poll};
 
 use log::{error, info, trace};
 use serde::{Deserialize, Serialize};
@@ -44,7 +44,7 @@ pub type ReceiverResult<T> = Result<T, UdpServerHandleError>;
 
 pub struct AudioReceiverHandle {
     //_handle: UdpServerHandleFuture,
-    _handle: JoinHandle<io::Result<()>>,
+    _handle: JoinHandle<Result<(), UdpServerHandleError>>,
     channel: mpsc::Sender<UdpServerCommands>,
     pub local_addr: SocketAddr,
 }
@@ -58,21 +58,43 @@ impl AudioReceiverHandle {
         //ch: &AsyncMixerInputEnd,
         sel: MixerTrackSelector,
     ) -> io::Result<AudioReceiverHandle> {
-        let sock = UdpSocket::bind("0.0.0.0:0")
-            .await?;
-            //.map_err(|e| UdpServerHandleError::TokioError(e.to_string()))?;
-        let local_addr = sock
-            .local_addr()?;
-            //.map_err(|e| UdpServerHandleError::TokioError(e.to_string()))?;
+        let sock = UdpSocket::bind("0.0.0.0:0").await?;
+        //.map_err(|e| UdpServerHandleError::TokioError(e.to_string()))?;
+        let local_addr = sock.local_addr()?;
+        //.map_err(|e| UdpServerHandleError::TokioError(e.to_string()))?;
         info!("local udp addr: {}", local_addr);
 
         let (s, r) = mpsc::channel(1);
         Ok(AudioReceiverHandle {
             //_handle: Arc::new(Mutex::new(Box::pin(udp_server(sock, r, ch)))), //info!("UDP Server Listening");
-            _handle: tokio::spawn(udp_server(sock, r, sel)),
+            _handle: tokio::spawn(async move {
+                udp_server(sock, r, sel).await
+            }),
             channel: s,
             local_addr,
         })
+    }
+}
+
+impl Future for AudioReceiverHandle {
+    type Output = Result<(), UdpServerHandleError>;
+
+    fn poll(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+
+        let task = self.get_mut();
+
+        match Pin::new(&mut task._handle).poll(cx) {
+            Poll::Ready(Ok(res)) => {
+                Poll::Ready(Ok(()))
+            },
+            Poll::Ready(Err(res)) => {
+                Poll::Ready(Err(UdpServerHandleError::TokioError(res.to_string())))
+            }
+            Poll::Pending => todo!(),
+        }
     }
 }
 
@@ -97,10 +119,10 @@ async fn udp_server(
     //mixer: SharedInputMixer,
     //raw_ch: &AsyncMixerInputEnd,
     stream_track_selector: MixerTrackSelector,
-) -> io::Result<()> {
+) -> Result<(), UdpServerHandleError> {
     info!("Starting UDP Receiver");
     // start connection
-    
+
     loop {
         let mut buf = vec![0; 10000 as usize].into_boxed_slice();
         tokio::select! {
@@ -127,7 +149,7 @@ async fn udp_server(
                                 write_to_mixer_async(mixer, data, stream_track_selector).await;
                             },
                             Err(e) => {
-                                
+
                             }
                         }
 
@@ -160,7 +182,6 @@ pub(crate) mod tests {
 
     use log::debug;
     use tokio::{io, sync::mpsc};
-    
 
     use crate::{mixer::MixerTrackSelector, streamer::receiver::AudioReceiverHandle};
 

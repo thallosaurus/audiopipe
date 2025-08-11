@@ -13,10 +13,9 @@ use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
     sync::{
-        Mutex,
-        mpsc::{self, Receiver},
+        mpsc::{self, Receiver}, Mutex
     },
-    task::JoinHandle,
+    task::{JoinError, JoinHandle},
 };
 use uuid::Uuid;
 
@@ -39,6 +38,7 @@ enum TcpServerCommands {
 pub enum TcpServerErrors {
     ClientDisconnectEof,
     SocketError(io::Error),
+    JoinError(JoinError)
 }
 
 #[derive(Debug)]
@@ -98,10 +98,14 @@ impl Future for TcpServer {
     ) -> std::task::Poll<Self::Output> {
         let mut task = self.get_mut();
 
-        if task._task.is_finished() {
-            Pin::new(&mut task).poll(cx)
-        } else {
-            Poll::Pending
+        match Pin::new(&mut task._task).poll(cx) {
+            Poll::Ready(Ok(res)) => {
+                Poll::Ready(Ok(()))
+            },
+            Poll::Ready(Err(res)) => {
+                Poll::Ready(Err(TcpServerErrors::JoinError(res)))
+            }
+            Poll::Pending => todo!(),
         }
     }
 }
@@ -181,13 +185,12 @@ where
 
                 let callback = on_success.clone();
 
-                // TODO Implement way for the callback to notify back when its done
                 let cb_ret = (callback)(mixer_track_selector).await;
-                match (callback)(mixer_track_selector).await {
+                match cb_ret {
                     Ok(handle) => {
                         let local_addr = handle.local_addr.clone();
                         handles.lock().await.insert(connection_id, handle);
-
+                        
                         info!("new udp connection id {}", connection_id);
                         send_packet(
                             &mut socket,
@@ -199,6 +202,7 @@ where
                             ),
                         )
                         .await
+                        // TODO Implement way for the callback to notify back when its done
                         .map_err(|e| TcpServerHandlerErrors::HandlerPacketError(e))?
 
                     }
