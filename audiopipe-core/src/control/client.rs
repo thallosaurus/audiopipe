@@ -12,7 +12,7 @@ use tokio::{
 use uuid::Uuid;
 
 use crate::{
-    control::packet::{ControlRequest, ControlResponse}, mixer::MixerTrackSelector, streamer::{receiver::{ReceiverResult, UdpServerHandle}, sender::UdpClientHandle}
+    control::packet::{ControlRequest, ControlResponse}, streamer::sender::UdpClientHandle
 };
 
 async fn send_packet(stream: &mut TcpStream, packet: ControlRequest) -> io::Result<()> {

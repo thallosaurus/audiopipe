@@ -3,7 +3,7 @@ use std::io;
 use cpal::{traits::*, *};
 
 //use config::{StreamerConfig, get_cpal_config};
-use log::{debug, info, warn};
+use log::{debug, info};
 
 use crate::{
     audio::{

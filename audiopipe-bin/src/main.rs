@@ -2,7 +2,7 @@ use std::io;
 
 use clap::Parser;
 use audiopipe_core::{
-    enumerate_devices, init_receiver, init_sender, mixer::MixerTrackSelector,
+    enumerate_devices, init_receiver, init_sender,
 };
 
 use crate::cli::{Cli, Commands};
