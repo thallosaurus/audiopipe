@@ -50,47 +50,6 @@ pub fn search_device(x: &Device, name: &str) -> bool {
     x.name().map(|y| y == name).unwrap_or(false)
 }
 
-pub type DebugWavWriter = WavWriter<BufWriter<File>>;
-
-/// Creates the debug wav writer
-pub fn create_wav_writer(
-    filename: String,
-    channels: u16,
-    sample_rate: u32,
-) -> anyhow::Result<Option<DebugWavWriter>> {
-    let spec = hound::WavSpec {
-        channels,
-        sample_rate,
-        bits_per_sample: 32,
-        sample_format: hound::SampleFormat::Float,
-    };
-
-    let now = SystemTime::now();
-
-    let timestamp = now.duration_since(SystemTime::UNIX_EPOCH)?;
-
-    let mut writer: Option<DebugWavWriter> = None;
-    #[cfg(debug_assertions)]
-    {
-        let fname = format!("dump/{}_{}.wav", timestamp.as_secs(), filename);
-        info!("Initializing Debug Wav Writer at {}", fname);
-        create_dir_all("dump/")?;
-        writer = Some(hound::WavWriter::create(fname, spec)?);
-    }
-
-    Ok(writer)
-}
-
-pub fn write_debug<T: cpal::SizedSample + Send + Pod + Default + 'static>(
-    writer: &mut Option<DebugWavWriter>,
-    sample: T,
-) {
-    if let Some(writer) = writer {
-        let s: f32 = bytemuck::cast(sample);
-        writer.write_sample(s).unwrap();
-    }
-}
-
 pub async fn init_sender(
     target: String,
     audio_host: Option<String>,

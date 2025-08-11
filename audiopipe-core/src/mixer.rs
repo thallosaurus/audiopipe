@@ -9,6 +9,8 @@ use ringbuf::{
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
+use crate::streamer::{create_wav_writer, DebugWavWriter};
+
 /// Input enum which selects one or two channels together
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum MixerTrackSelector {
@@ -51,6 +53,7 @@ pub struct AsyncMixerInputEnd {
     channel_count: usize,
     buffer_size: usize,
     sample_rate: usize,
+    //debug_writer: Option<DebugWavWriter>
 }
 
 impl MixerTrait for AsyncMixerInputEnd {
@@ -77,11 +80,18 @@ impl MixerTrait for AsyncMixerInputEnd {
         bufsize_per_channel: usize,
         sample_rate: usize,
     ) -> Self {
+        /*let debug_writer = if cfg!(debug_assertions) {
+            Some(create_wav_writer("mixer-input".to_string(), chcount, sample_rate).unwrap())
+        } else {
+            None
+        };*/
+
         Self {
             inputs: tracks,
             channel_count: chcount,
             buffer_size: bufsize_per_channel,
             sample_rate,
+            //debug_writer
         }
     }
 

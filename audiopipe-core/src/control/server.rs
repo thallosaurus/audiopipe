@@ -14,8 +14,6 @@ use tokio::{
 use crate::{
     audio::GLOBAL_MASTER_OUTPUT_MIXER,
     control::{
-        BufferSize, ChannelCount, ConnectionControl, ConnectionControlResult,
-        ConnectionControlState, Port, SharedUdpServerHandles,
         packet::{ControlError, ControlRequest, ControlResponse},
     },
     mixer::MixerTrait,
