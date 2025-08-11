@@ -1,7 +1,4 @@
-use std::{
-    fmt::Display,
-    net::SocketAddr,
-};
+use std::{fmt::Display, net::SocketAddr};
 
 use log::{error, info, trace};
 use serde::{Deserialize, Serialize};

@@ -152,6 +152,7 @@ where
                 let cb = callback.clone();
 
                 *handle.lock().await = Some((cb)(target, uuid, bufsize, srate).await);
+                break
             }
             ControlResponse::Ok => todo!(),
             ControlResponse::Error(control_error) => {

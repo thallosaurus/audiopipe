@@ -1,3 +1,7 @@
+use std::{collections::HashMap, sync::Arc};
+
+use tokio::sync::Mutex;
+
 
 
 pub mod client;
@@ -11,8 +15,6 @@ pub enum ConnectionControlError {
 type BufferSize = usize;
 type SampleRate = usize;
 type Port = u16;
-
-//type SharedUdpServerHandles = Arc<Mutex<HashMap<uuid::Uuid, UdpServerHandle>>>;
 
 #[cfg(test)]
 mod tests {
@@ -43,11 +45,10 @@ mod tests {
         // start the server in the background
         tokio::spawn(async move {
             if let Err(e) = server.await {
-                error!("server crashed");
+                error!("server crashed: {:?}", e);
                 assert!(false);
             }
         });
-        //let server = new_control_server(String::from(server_address), dummy_receiver);
 
         let (s_output, _) = default_client_mixer(2, 1024, 44100);
         set_global_master_input_mixer(s_output).await;
