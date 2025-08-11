@@ -9,9 +9,10 @@ use tokio::{
     net::TcpStream,
     sync::Mutex,
 };
+use uuid::Uuid;
 
 use crate::{
-    control::packet::{ControlRequest, ControlResponse}, streamer::sender::UdpClientHandle
+    control::packet::{ControlRequest, ControlResponse}, mixer::MixerTrackSelector, streamer::{receiver::{ReceiverResult, UdpServerHandle}, sender::UdpClientHandle}
 };
 
 async fn send_packet(stream: &mut TcpStream, packet: ControlRequest) -> io::Result<()> {
@@ -34,11 +35,16 @@ async fn read_packet(stream: &mut TcpStream, mut buf: &mut [u8]) -> io::Result<C
 
 /// channel count tells us, how many of our available channels we want to send
 /// dont get tempted to just pipe in the stream config variable
-pub async fn tcp_client(
+pub async fn tcp_client<F, Fut>(
     target_node_addr: &str,
+    on_success: F
     //config: &StreamConfig,
     //max_buffer_size: u32,
-) -> io::Result<()> {
+) -> io::Result<()> 
+where
+    F: Fn(SocketAddr, Uuid, usize, usize) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = UdpClientHandle> + Send + 'static,
+{
     let ip: Ipv4Addr = target_node_addr.parse().expect("parse failed");
     let target = SocketAddr::new(std::net::IpAddr::V4(ip), 6789);
     debug!("Connecting to {}", target);
@@ -57,6 +63,8 @@ pub async fn tcp_client(
     // TODO make this better
     let mut buf = vec![0; 1024];
 
+    let callback = Arc::new(on_success);
+
     loop {
         // buffer reuse
         let json = read_packet(&mut stream, &mut buf).await?;
@@ -74,7 +82,11 @@ pub async fn tcp_client(
                     target, uuid
                 );
 
-                *handle.lock().await = Some(UdpClientHandle::start_audio_stream_client(target, uuid, bufsize, srate).await);
+                //*handle.lock().await = Some(UdpClientHandle::start_audio_stream_client(target, uuid, bufsize, srate).await);
+
+                let cb = callback.clone();
+
+                *handle.lock().await = Some((cb)(target, uuid, bufsize, srate).await);
             }
             ControlResponse::Ok => todo!(),
             ControlResponse::Error(control_error) => {

@@ -15,6 +15,7 @@ use crate::mixer::{read_from_mixer_sync, write_to_mixer_sync, AsyncMixerInputEnd
 pub static GLOBAL_MASTER_OUTPUT_MIXER: Lazy<Arc<Mutex<Option<AsyncMixerInputEnd>>>> =
     Lazy::new(|| Arc::new(Mutex::new(None)));
 
+
 /// Sets the global master input mixer - See [GLOBAL_MASTER_OUTPUT_MIXER]
 pub async fn set_global_master_output_mixer(mixer: AsyncMixerInputEnd) {
     let mut master_mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await;
@@ -106,6 +107,7 @@ pub fn select_output_device_config(
     }
 }
 
+/// sets up the flow of data from the mixer to the sound card
 pub async fn setup_master_output(
     device: Device,
     config: StreamConfig,
@@ -134,6 +136,7 @@ pub async fn setup_master_output(
     )
 }
 
+/// Sets up the flow of data from the sound card to the mixer
 pub async fn setup_master_input(
     device: Device,
     config: &StreamConfig,

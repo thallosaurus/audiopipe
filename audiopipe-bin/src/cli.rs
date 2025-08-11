@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+use audiopipe_core::mixer::MixerTrackSelector;
 use clap::{Parser, Subcommand};
 
 /// Re-export of the Cargo Package Name
@@ -16,6 +17,7 @@ pub enum ChannelMappingError {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
+#[deprecated]
 pub struct ChannelMapping {
     _from: usize,
     _to: usize,
@@ -98,4 +100,8 @@ pub struct GlobalOptions {
     /// Requested Sample Rate
     #[arg(short, long)]
     pub samplerate: Option<u32>,
+
+    /// Selects which tracks are the master inputs/outputs. Use "-t 0" for mono and "-t 0,1" for stereo
+    #[arg(short, long)]
+    pub track_selector: MixerTrackSelector
 }

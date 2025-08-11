@@ -1,9 +1,9 @@
-
+use std::io;
 
 use cpal::{traits::*, *};
 
 //use config::{StreamerConfig, get_cpal_config};
-use log::{debug, info};
+use log::{debug, info, warn};
 
 use crate::{
     audio::{
@@ -12,6 +12,7 @@ use crate::{
     },
     control::{client::tcp_client, server::new_control_server},
     mixer::{MixerTrackSelector, default_client_mixer, default_server_mixer},
+    streamer::{receiver::UdpServerHandle, sender::UdpClientHandle},
 };
 
 /// maximum permitted size of one UDP payload
@@ -54,7 +55,7 @@ pub async fn init_sender(
     bsize: usize,
     srate: usize,
     master_track_selector: MixerTrackSelector,
-) {
+) -> io::Result<()> {
     let (input_device, sconfig) = setup_cpal_input(audio_host, device_name, bsize, srate);
 
     let mixer = default_client_mixer(sconfig.channels.into(), bsize, srate);
@@ -68,9 +69,7 @@ pub async fn init_sender(
 
     master_stream.play().unwrap();
 
-    // TODO Implement reconnection logic here
-    // TODO Check buffersize values here
-    tcp_client(&target).await.unwrap();
+    tcp_client(&target, UdpClientHandle::start_audio_stream_client).await
 }
 
 pub async fn init_receiver(
@@ -80,7 +79,7 @@ pub async fn init_receiver(
     srate: usize,
     addr: Option<String>,
     master_track_selector: MixerTrackSelector,
-) {
+) -> io::Result<()> {
     let (output_device, sconfig) = setup_cpal_output(audio_host, device_name, bsize, srate);
 
     let chcount = sconfig.channels;
@@ -95,9 +94,11 @@ pub async fn init_receiver(
 
     master_stream.play().unwrap();
 
-    new_control_server(String::from(addr.unwrap_or("0.0.0.0".to_string())))
-        .await
-        .unwrap();
+    new_control_server(
+        String::from(addr.unwrap_or("0.0.0.0".to_string())),
+        UdpServerHandle::start_audio_stream_server,
+    )
+    .await
     //server.block();
 }
 
@@ -194,26 +195,36 @@ fn setup_cpal_input(
 
 pub fn enumerate_devices(audio_host: Option<String>, device_name: Option<String>) {
     println!("Supported hosts:\n  {:?}", cpal::ALL_HOSTS);
+    println!("");
     let available_hosts = cpal::available_hosts();
     println!("Available hosts:\n  {:?}", available_hosts);
+    println!("");
 
     let host = match audio_host {
         Some(h) => search_for_host(&h).unwrap(),
         None => cpal::default_host(),
     };
 
-    let output_device = match device_name {
-        Some(ref d) => host
-            .output_devices()
-            .unwrap()
-            .find(|x| search_device(x, &d)),
-        None => host.default_output_device(),
+    println!("Available Output Devices:");
+    for d in host.output_devices().unwrap() {
+        println!("{}", d.name().unwrap());
     }
-    .expect("no output device");
+
+    println!("");
+
+    println!("Available Input Devices:");
+    for d in host.input_devices().unwrap() {
+        println!("{}", d.name().unwrap());
+    }
+
+    println!("");
 
     let input_device = match device_name {
         Some(ref d) => host.input_devices().unwrap().find(|x| search_device(x, &d)),
-        None => host.default_input_device(),
+        None => {
+            println!("Using system default input device");
+            host.default_input_device()
+        }
     }
     .expect("no input device");
 
@@ -229,6 +240,18 @@ pub fn enumerate_devices(audio_host: Option<String>, device_name: Option<String>
     }
 
     println!("");
+
+    let output_device = match device_name {
+        Some(ref d) => host
+            .output_devices()
+            .unwrap()
+            .find(|x| search_device(x, &d)),
+        None => {
+            println!("Using system default output device");
+            host.default_output_device()
+        }
+    }
+    .expect("no output device");
 
     println!("Supported Configs for Device {:?}", output_device.name());
     for c in output_device.supported_output_configs().unwrap() {

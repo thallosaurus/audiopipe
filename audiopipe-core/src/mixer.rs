@@ -9,7 +9,6 @@ use ringbuf::{
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-
 /// Input enum which selects one or two channels together
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum MixerTrackSelector {
@@ -23,6 +22,29 @@ impl MixerTrackSelector {
             MixerTrackSelector::Mono(_) => 1,
             MixerTrackSelector::Stereo(_, _) => 2,
         }
+    }
+}
+
+impl From<String> for MixerTrackSelector {
+    fn from(value: String) -> Self {
+        let sp: Vec<&str> = value.split(",").collect();
+
+        if sp.len() == 1 {
+            
+            let v: usize = sp.get(0).unwrap().parse().expect("not a valid number");
+            Self::Mono(v)
+        } else if sp.len() == 2 {
+            
+            let l: usize = sp.get(0).unwrap().parse().expect("not a valid number");
+            let r: usize = sp.get(1).unwrap().parse().expect("not a valid number");
+            Self::Stereo(l, r)
+        } else {
+            println!("Using default mixer tracks (ch1, ch2)");
+            Self::Stereo(0, 1)
+        }
+
+        //let from = sp.get(0);
+        //let to = sp.get(0);
     }
 }
 
@@ -535,12 +557,11 @@ pub trait MixerTrait {
 
 #[cfg(test)]
 mod tests {
-    
 
     use crate::mixer::{
         AsyncMixerInputEnd, AsyncMixerOutputEnd, MixerTrackSelector, SyncMixerInputEnd,
-        SyncMixerOutputEnd, custom_mixer, read_from_mixer_async,
-        read_from_mixer_sync, write_to_mixer_async, write_to_mixer_sync,
+        SyncMixerOutputEnd, custom_mixer, read_from_mixer_async, read_from_mixer_sync,
+        write_to_mixer_async, write_to_mixer_sync,
     };
 
     type DebugMixer = (AsyncMixerOutputEnd, AsyncMixerInputEnd);
