@@ -10,7 +10,7 @@ use crate::{
         select_input_device_config, select_output_device_config, set_global_master_input_mixer,
         set_global_master_output_mixer, setup_master_output,
     },
-    control::{client::tcp_client, server::new_control_server},
+    control::{client::TcpClient, server::TcpServer},
     mixer::{MixerTrackSelector, default_client_mixer, default_server_mixer},
     streamer::{receiver::UdpServerHandle, sender::UdpClientHandle},
 };
@@ -55,7 +55,7 @@ pub async fn init_sender(
     bsize: usize,
     srate: usize,
     master_track_selector: MixerTrackSelector,
-) -> io::Result<()> {
+) -> TcpClient {
     let (input_device, sconfig) = setup_cpal_input(audio_host, device_name, bsize, srate);
 
     let mixer = default_client_mixer(sconfig.channels.into(), bsize, srate);
@@ -69,7 +69,7 @@ pub async fn init_sender(
 
     master_stream.play().unwrap();
 
-    tcp_client(&target, UdpClientHandle::start_audio_stream_client).await
+    TcpClient::new(target, UdpClientHandle::start_audio_stream_client)
 }
 
 pub async fn init_receiver(
@@ -79,7 +79,7 @@ pub async fn init_receiver(
     srate: usize,
     addr: Option<String>,
     master_track_selector: MixerTrackSelector,
-) -> io::Result<()> {
+) -> TcpServer {
     let (output_device, sconfig) = setup_cpal_output(audio_host, device_name, bsize, srate);
 
     let chcount = sconfig.channels;
@@ -94,11 +94,11 @@ pub async fn init_receiver(
 
     master_stream.play().unwrap();
 
-    new_control_server(
+    let server = TcpServer::new(
         String::from(addr.unwrap_or("0.0.0.0".to_string())),
         UdpServerHandle::start_audio_stream_server,
-    )
-    .await
+    );
+    server
     //server.block();
 }
 

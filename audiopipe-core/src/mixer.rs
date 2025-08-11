@@ -556,7 +556,7 @@ pub trait MixerTrait {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
 
     use crate::mixer::{
         AsyncMixerInputEnd, AsyncMixerOutputEnd, MixerTrackSelector, SyncMixerInputEnd,
@@ -567,11 +567,11 @@ mod tests {
     type DebugMixer = (AsyncMixerOutputEnd, AsyncMixerInputEnd);
     type SyncDebugMixer = (SyncMixerOutputEnd, SyncMixerInputEnd);
 
-    fn debug_mixer(chcount: usize, bufsize_per_channel: usize, sample_rate: usize) -> DebugMixer {
+    pub fn debug_mixer(chcount: usize, bufsize_per_channel: usize, sample_rate: usize) -> DebugMixer {
         custom_mixer(chcount, bufsize_per_channel, sample_rate)
     }
 
-    fn sync_debug_mixer(
+    pub fn sync_debug_mixer(
         chcount: usize,
         bufsize_per_channel: usize,
         sample_rate: usize,

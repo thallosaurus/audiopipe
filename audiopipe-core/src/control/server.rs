@@ -2,18 +2,25 @@ use std::{
     collections::HashMap,
     net::{Ipv4Addr, SocketAddr},
     sync::Arc,
+    task::Poll,
 };
 
 use log::{debug, error, info, trace};
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
-    sync::Mutex,
+    sync::{
+        Mutex,
+        mpsc::{self, Receiver},
+    },
+    task::JoinHandle,
 };
 
 use crate::{
     audio::GLOBAL_MASTER_OUTPUT_MIXER,
-    control::packet::{ControlError, ControlRequest, ControlResponse},
+    control::{
+        packet::{ControlError, ControlRequest, ControlResponse},
+    },
     mixer::{MixerTrackSelector, MixerTrait},
     streamer::receiver::UdpServerHandle,
 };
@@ -34,10 +41,55 @@ async fn read_packet(stream: &mut TcpStream, mut buf: &mut [u8]) -> io::Result<C
     Ok(json)
 }
 
+enum TcpServerCommands {
+    Stop,
+}
+
+pub struct TcpServer {
+    pub _task: JoinHandle<io::Result<()>>,
+    channel: mpsc::Sender<TcpServerCommands>,
+}
+
+impl TcpServer {
+    pub fn new<F, Fut>(target_node_addr: String, on_success: F) -> Self
+    where
+        F: Fn(MixerTrackSelector) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = io::Result<UdpServerHandle>> + Send + 'static,
+    {
+        let (s, r) = mpsc::channel(1);
+
+        Self {
+            _task: tokio::spawn(new_control_server(target_node_addr, r, on_success)),
+            channel: s,
+        }
+    }
+}
+
+impl Future for TcpServer {
+    type Output = io::Result<()>;
+
+    fn poll(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        let task = self.get_mut();
+
+        if task._task.is_finished() {
+            Poll::Ready(Ok(()))
+        } else {
+            Poll::Pending
+        }
+    }
+}
+
 //pub async fn new_control_server(sock_addr: String) -> io::Result<()> {}
 
 /// The entry point to the tcp communication server
-pub async fn new_control_server<F, Fut>(sock_addr: String, on_success: F) -> io::Result<()>
+async fn new_control_server<F, Fut>(
+    sock_addr: String,
+    r: Receiver<TcpServerCommands>,
+    on_success: F,
+) -> io::Result<()>
 where
     F: Fn(MixerTrackSelector) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = io::Result<UdpServerHandle>> + Send + 'static,
@@ -78,10 +130,7 @@ where
 
                             let callback = callback.clone();
 
-                            //start_udp(mixer_track_selector).await;
-                            //if let Ok(channel) = mixer.get_channel(mixer_track_selector) {
-                            //let handle =
-                            //UdpServerHandle::start_audio_stream_server(mixer_track_selector).await
+                            // TODO Implement way for the callback to notify back when its done
                             match (callback)(mixer_track_selector).await {
                                 Ok(handle) => {
                                     let local_addr = handle.local_addr.clone();

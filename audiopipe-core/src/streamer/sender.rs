@@ -118,7 +118,7 @@ pub async fn udp_client(
 }*/
 
 #[cfg(test)]
-mod tests {
+pub (crate) mod tests {
     use std::net::SocketAddr;
 
     use tokio::sync::mpsc;
@@ -137,7 +137,7 @@ mod tests {
         let (s, r) = mpsc::channel(1);
         UdpClientHandle {
             _handle: tokio::spawn(async move {
-                log::trace!("dummy connection to {}", addr);
+                log::debug!("dummy connection to {}", addr);
                 assert!(true);
                 Ok(())
             }),

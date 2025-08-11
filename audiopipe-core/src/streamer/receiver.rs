@@ -159,9 +159,10 @@ async fn udp_server(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::net::SocketAddr;
 
+    use log::debug;
     use tokio::{io, sync::mpsc};
     use uuid::Uuid;
 
@@ -172,7 +173,8 @@ mod tests {
         //smprt: u32,
         //chcount: usize,
     ) -> io::Result<UdpServerHandle> {
-        let local_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
+        let local_addr: SocketAddr = "0.0.0.0:12345".parse().unwrap();
+        debug!("dummy server addr: {}", local_addr);
         let (s, r) = mpsc::channel(1);
         Ok(UdpServerHandle {
             _handle: tokio::spawn(async move {

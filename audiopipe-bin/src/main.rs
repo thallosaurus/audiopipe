@@ -1,16 +1,14 @@
 use std::io;
 
+use audiopipe_core::{enumerate_devices, init_receiver, init_sender};
 use clap::Parser;
-use audiopipe_core::{
-    enumerate_devices, init_receiver, init_sender,
-};
 
 use crate::cli::{Cli, Commands};
 
 pub mod cli;
 
 #[tokio::main]
-async fn main() -> io::Result<()>{
+async fn main() -> io::Result<()> {
     let cli = Cli::parse();
     env_logger::init();
 
@@ -20,30 +18,33 @@ async fn main() -> io::Result<()>{
     let srate = cli.global.samplerate.unwrap_or(44100);
     match cli.command {
         Commands::Sender(sender_commands) => {
-            init_sender(
+            let client = init_sender(
                 sender_commands.target,
                 cli.global.audio_host,
                 cli.global.device,
                 bsize as usize,
                 srate as usize,
-                channel_selector
+                channel_selector,
             )
-            .await
+            .await;
+
+            client.await.unwrap();
         }
         Commands::Receiver(recv_commands) => {
-            init_receiver(
+            let server = init_receiver(
                 cli.global.audio_host,
                 cli.global.device,
                 bsize as usize,
                 srate as usize,
                 recv_commands.addr,
-                channel_selector
-            )
-            .await
+                channel_selector,
+            ).await;
+
+            server.await.unwrap();
         }
         Commands::EnumDevices => {
             enumerate_devices(cli.global.audio_host, cli.global.device);
-            Ok(())
         }
     }
+    Ok(())
 }
