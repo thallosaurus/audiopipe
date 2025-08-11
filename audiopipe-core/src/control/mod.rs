@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 use tokio::{
     io::{self},
     sync::{
-        mpsc::{self}, Mutex
+        Mutex,
+        mpsc::{self},
     },
     task::{JoinError, JoinHandle},
 };
@@ -30,22 +31,26 @@ mod tests {
     use crate::{
         audio::{set_global_master_input_mixer, set_global_master_output_mixer},
         control::{client::TcpClient, server::TcpServer},
-        mixer::{default_client_mixer, default_server_mixer, tests::debug_mixer, MixerTrackSelector},
+        mixer::{
+            MixerTrackSelector, default_client_mixer, default_server_mixer, tests::debug_mixer,
+        },
         streamer::{receiver::tests::dummy_receiver, sender::tests::dummy_sender},
         tests::init,
     };
 
+    /// this test checks, if the connection handshake works properly
     #[tokio::test]
-    async fn test_protocol() {
+    async fn test_connection_protocol() {
         init();
 
         let server_address = "127.0.0.1";
 
-        let (r_output, r_input) = debug_mixer(2, 1024, 44100);
+        let (_, r_input) = debug_mixer(2, 1024, 44100);
         set_global_master_output_mixer(r_input).await;
 
         let server = TcpServer::new(String::from(server_address), dummy_receiver);
 
+        // start the server in the background
         tokio::spawn(async move {
             if let Err(e) = server.await {
                 error!("server crashed");
@@ -54,10 +59,13 @@ mod tests {
         });
         //let server = new_control_server(String::from(server_address), dummy_receiver);
 
-        let (s_output, s_input) = default_client_mixer(2, 1024, 44100);
+        let (s_output, _) = default_client_mixer(2, 1024, 44100);
         set_global_master_input_mixer(s_output).await;
         let client = TcpClient::new(String::from(server_address), dummy_sender);
 
-        assert!(true);
+        let (result,) = tokio::join!(client);
+
+        // client has shut down cleanly
+        assert!(result.is_ok());
     }
 }

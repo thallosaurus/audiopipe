@@ -15,6 +15,7 @@ use tokio::{
     },
     task::JoinHandle,
 };
+use uuid::Uuid;
 
 use crate::{
     audio::GLOBAL_MASTER_OUTPUT_MIXER,
@@ -22,7 +23,7 @@ use crate::{
         packet::{ControlError, ControlRequest, ControlResponse},
     },
     mixer::{MixerTrackSelector, MixerTrait},
-    streamer::receiver::UdpServerHandle,
+    streamer::receiver::AudioReceiverHandle,
 };
 
 async fn send_packet(stream: &mut TcpStream, packet: ControlResponse) -> io::Result<()> {
@@ -45,8 +46,11 @@ enum TcpServerCommands {
     Stop,
 }
 
+/// struct that represents a tcp server
+/// _task holds the task associated with the server
 pub struct TcpServer {
     pub _task: JoinHandle<io::Result<()>>,
+    handles: Arc<Mutex<HashMap<Uuid, AudioReceiverHandle>>>,
     channel: mpsc::Sender<TcpServerCommands>,
 }
 
@@ -54,13 +58,17 @@ impl TcpServer {
     pub fn new<F, Fut>(target_node_addr: String, on_success: F) -> Self
     where
         F: Fn(MixerTrackSelector) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = io::Result<UdpServerHandle>> + Send + 'static,
+        Fut: Future<Output = io::Result<AudioReceiverHandle>> + Send + 'static,
     {
         let (s, r) = mpsc::channel(1);
 
+        // holds all open udp audio streams
+        let handles = Arc::new(Mutex::new(HashMap::new()));
+
         Self {
-            _task: tokio::spawn(new_control_server(target_node_addr, r, on_success)),
+            _task: tokio::spawn(new_control_server(target_node_addr, handles.clone(), r, on_success)),
             channel: s,
+            handles
         }
     }
 }
@@ -87,20 +95,17 @@ impl Future for TcpServer {
 /// The entry point to the tcp communication server
 async fn new_control_server<F, Fut>(
     sock_addr: String,
+    handles: Arc<Mutex<HashMap<Uuid, AudioReceiverHandle>>>,
     r: Receiver<TcpServerCommands>,
     on_success: F,
 ) -> io::Result<()>
 where
     F: Fn(MixerTrackSelector) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = io::Result<UdpServerHandle>> + Send + 'static,
+    Fut: Future<Output = io::Result<AudioReceiverHandle>> + Send + 'static,
 {
     let ip: Ipv4Addr = sock_addr.parse().expect("parse failed");
     let target = SocketAddr::new(std::net::IpAddr::V4(ip), 6789);
-
     let listen = TcpListener::bind(target).await?;
-
-    // holds all open udp audio streams
-    let handles = Arc::new(Mutex::new(HashMap::new()));
 
     //let rc = Arc::new(Mutex::new(r));
     let callback = Arc::new(on_success);

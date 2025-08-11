@@ -45,22 +45,22 @@ impl Display for UdpServerHandleError {
 
 pub type ReceiverResult<T> = Result<T, UdpServerHandleError>;
 
-pub struct UdpServerHandle {
+pub struct AudioReceiverHandle {
     //_handle: UdpServerHandleFuture,
     _handle: JoinHandle<io::Result<()>>,
     channel: mpsc::Sender<UdpServerCommands>,
     pub local_addr: SocketAddr,
 }
 
-impl UdpServerHandle {
+impl AudioReceiverHandle {
     pub async fn stop(&self) -> Result<(), SendError<UdpServerCommands>> {
         self.channel.send(UdpServerCommands::Stop).await
     }
 
-    pub async fn start_audio_stream_server(
+    pub async fn new(
         //ch: &AsyncMixerInputEnd,
         sel: MixerTrackSelector,
-    ) -> io::Result<UdpServerHandle> {
+    ) -> io::Result<AudioReceiverHandle> {
         let sock = UdpSocket::bind("0.0.0.0:0")
             .await?;
             //.map_err(|e| UdpServerHandleError::TokioError(e.to_string()))?;
@@ -70,8 +70,7 @@ impl UdpServerHandle {
         info!("local udp addr: {}", local_addr);
 
         let (s, r) = mpsc::channel(1);
-
-        Ok(UdpServerHandle {
+        Ok(AudioReceiverHandle {
             //_handle: Arc::new(Mutex::new(Box::pin(udp_server(sock, r, ch)))), //info!("UDP Server Listening");
             _handle: tokio::spawn(udp_server(sock, r, sel)),
             channel: s,
@@ -166,17 +165,17 @@ pub(crate) mod tests {
     use tokio::{io, sync::mpsc};
     use uuid::Uuid;
 
-    use crate::{mixer::MixerTrackSelector, streamer::{receiver::UdpServerHandle, sender::UdpClientHandle}};
+    use crate::{mixer::MixerTrackSelector, streamer::{receiver::AudioReceiverHandle, sender::AudioSenderHandle}};
 
     pub async fn dummy_receiver(
         _: MixerTrackSelector,
         //smprt: u32,
         //chcount: usize,
-    ) -> io::Result<UdpServerHandle> {
+    ) -> io::Result<AudioReceiverHandle> {
         let local_addr: SocketAddr = "0.0.0.0:12345".parse().unwrap();
         debug!("dummy server addr: {}", local_addr);
         let (s, r) = mpsc::channel(1);
-        Ok(UdpServerHandle {
+        Ok(AudioReceiverHandle {
             _handle: tokio::spawn(async move {
                 assert!(true);
                 Ok(())

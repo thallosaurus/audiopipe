@@ -21,22 +21,22 @@ pub enum UdpClientCommands {
     Stop,
 }
 
-pub struct UdpClientHandle {
+pub struct AudioSenderHandle {
     //_handle: Pin<Box<dyn Future<Output = io::Result<()>> + Send>>,
     _handle: JoinHandle<io::Result<()>>,
     channel: mpsc::Sender<UdpClientCommands>,
     connection_id: Uuid,
 }
 
-impl UdpClientHandle {
-    pub async fn start_audio_stream_client(
+impl AudioSenderHandle {
+    pub async fn new(
         addr: SocketAddr,
         //smprt: u32,
         //chcount: usize,
         connection_id: Uuid,
         bufsize: usize,
         sample_rate: usize,
-    ) -> UdpClientHandle {
+    ) -> AudioSenderHandle {
         let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
 
         info!("Connecting UDP to {}", addr);
@@ -45,7 +45,7 @@ impl UdpClientHandle {
         let (s, r) = mpsc::channel(1);
 
         //info!("Starting UDP Sender");
-        UdpClientHandle {
+        AudioSenderHandle {
             //_handle: Box::pin(udp_client(sock, bufsize * chcount as u32, r)),
             _handle: tokio::spawn(udp_client(sock, r, bufsize, sample_rate, connection_id)),
             channel: s,
@@ -118,13 +118,16 @@ pub async fn udp_client(
 }*/
 
 #[cfg(test)]
-pub (crate) mod tests {
+pub(crate) mod tests {
     use std::net::SocketAddr;
 
-    use tokio::sync::mpsc;
+    use tokio::{
+        io,
+        sync::mpsc::{self, Sender},
+    };
     use uuid::Uuid;
 
-    use crate::streamer::sender::UdpClientHandle;
+    use crate::{mixer::MixerTrackSelector, streamer::sender::AudioSenderHandle};
 
     pub async fn dummy_sender(
         addr: SocketAddr,
@@ -133,9 +136,9 @@ pub (crate) mod tests {
         connection_id: Uuid,
         bufsize: usize,
         sample_rate: usize,
-    ) -> UdpClientHandle {
+    ) -> AudioSenderHandle {
         let (s, r) = mpsc::channel(1);
-        UdpClientHandle {
+        AudioSenderHandle {
             _handle: tokio::spawn(async move {
                 log::debug!("dummy connection to {}", addr);
                 assert!(true);

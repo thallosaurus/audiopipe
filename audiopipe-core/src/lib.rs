@@ -12,7 +12,7 @@ use crate::{
     },
     control::{client::TcpClient, server::TcpServer},
     mixer::{MixerTrackSelector, default_client_mixer, default_server_mixer},
-    streamer::{receiver::UdpServerHandle, sender::UdpClientHandle},
+    streamer::{receiver::AudioReceiverHandle, sender::AudioSenderHandle},
 };
 
 /// maximum permitted size of one UDP payload
@@ -32,6 +32,8 @@ pub mod control;
 
 /// implementation of the audio sender oder UDP
 pub mod streamer;
+
+pub static MESSAGE: &'static str = "\nmay the bytes that flow through this logic make your life a little less shit\n";
 
 /// Searches for the specified Audio [cpal::HostId] encoded as string
 pub fn search_for_host(name: &str) -> anyhow::Result<Host> {
@@ -69,7 +71,7 @@ pub async fn init_sender(
 
     master_stream.play().unwrap();
 
-    TcpClient::new(target, UdpClientHandle::start_audio_stream_client)
+    TcpClient::new(target, AudioSenderHandle::new)
 }
 
 pub async fn init_receiver(
@@ -96,7 +98,7 @@ pub async fn init_receiver(
 
     let server = TcpServer::new(
         String::from(addr.unwrap_or("0.0.0.0".to_string())),
-        UdpServerHandle::start_audio_stream_server,
+        AudioReceiverHandle::new,
     );
     server
     //server.block();

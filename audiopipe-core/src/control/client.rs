@@ -1,19 +1,22 @@
 use std::{
-    net::{Ipv4Addr, SocketAddr},
-    sync::Arc, task::Poll
+    net::{Ipv4Addr, SocketAddr}, pin::Pin, sync::Arc, task::Poll
 };
 
 use log::{debug, error, info, trace};
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
-    sync::{mpsc::{self, Receiver}, Mutex}, task::JoinHandle,
+    sync::{
+        Mutex,
+        mpsc::{self, Receiver},
+    },
+    task::JoinHandle,
 };
 use uuid::Uuid;
 
 use crate::{
     control::packet::{ControlRequest, ControlResponse},
-    streamer::sender::UdpClientHandle,
+    streamer::sender::AudioSenderHandle,
 };
 
 async fn send_packet(stream: &mut TcpStream, packet: ControlRequest) -> io::Result<()> {
@@ -34,6 +37,12 @@ async fn read_packet(stream: &mut TcpStream, mut buf: &mut [u8]) -> io::Result<C
     Ok(json)
 }
 
+enum TcpClientError {
+    StreamSendError(io::Error),
+    StreamReadError(io::Error),
+    TcpConnectError(io::Error)
+}
+
 enum TcpClientCommands {
     Stop,
 }
@@ -41,31 +50,43 @@ enum TcpClientCommands {
 pub struct TcpClient {
     pub _task: JoinHandle<io::Result<()>>,
     channel: mpsc::Sender<TcpClientCommands>,
+    handle: Arc<Mutex<Option<AudioSenderHandle>>>,
 }
 
 impl TcpClient {
-    pub fn new<F, Fut>(
-        target_node_addr: String,
-        on_success: F, //config: &StreamConfig,
-                       //max_buffer_size: u32,
-    ) -> Self
+    pub fn new<F, Fut>(target_node_addr: String, on_success: F) -> Self
     where
         F: Fn(SocketAddr, Uuid, usize, usize) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = UdpClientHandle> + Send + 'static,
+        Fut: Future<Output = AudioSenderHandle> + Send + 'static,
     {
         let (s, r) = mpsc::channel(1);
 
+        // Stores the current udp connection
+        let handle: Arc<Mutex<Option<AudioSenderHandle>>> = Arc::new(Mutex::new(None));
+
         Self {
-            _task: tokio::spawn(tcp_client(target_node_addr, r, on_success)),
+            _task: tokio::spawn(tcp_client(target_node_addr, r, handle.clone(), on_success)),
             channel: s,
+            handle,
         }
+    }
+
+    pub async fn stop(&self) {
+        if let Some(h) = self.handle.lock().await.as_ref() {
+            h.stop().await.unwrap();
+        }
+
+        self.channel.send(TcpClientCommands::Stop).await.unwrap();
     }
 }
 
 impl Future for TcpClient {
     type Output = io::Result<()>;
 
-    fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+    fn poll(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
         let task = self.get_mut();
 
         if task._task.is_finished() {
@@ -81,26 +102,26 @@ impl Future for TcpClient {
 async fn tcp_client<F, Fut>(
     target_node_addr: String,
     r: Receiver<TcpClientCommands>,
+    handle: Arc<Mutex<Option<AudioSenderHandle>>>,
     on_success: F, //config: &StreamConfig,
                    //max_buffer_size: u32,
 ) -> io::Result<()>
 where
     F: Fn(SocketAddr, Uuid, usize, usize) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = UdpClientHandle> + Send + 'static,
+    Fut: Future<Output = AudioSenderHandle> + Send + 'static,
 {
     let ip: Ipv4Addr = target_node_addr.parse().expect("parse failed");
     let target = SocketAddr::new(std::net::IpAddr::V4(ip), 6789);
     debug!("Connecting to {}", target);
 
     let mut stream = TcpStream::connect(target).await?;
+    //.map_err(|e|TcpClientError::TcpConnectError(e))?;
     info!("Connected to server {}", target);
 
     // connection packet
     let packet = ControlRequest::OpenStream(crate::mixer::MixerTrackSelector::Stereo(0, 1));
     send_packet(&mut stream, packet).await?;
-
-    // Stores the current udp connection
-    let handle: Arc<Mutex<Option<UdpClientHandle>>> = Arc::new(Mutex::new(None));
+    //.map_err(|e|TcpClientError::StreamSendError(e))?;
 
     // the network message buffer
     // TODO make this better
@@ -111,6 +132,7 @@ where
     loop {
         // buffer reuse
         let json = read_packet(&mut stream, &mut buf).await?;
+        //.map_err(|e|TcpClientError::StreamReadError(e))?;
 
         debug!("< Read Packet: {:?}", json);
 
