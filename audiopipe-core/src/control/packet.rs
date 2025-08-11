@@ -1,4 +1,4 @@
-use std::fmt::{Display, Write};
+use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

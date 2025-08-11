@@ -1,5 +1,5 @@
 use std::{
-    fmt::{Display, Write},
+    fmt::Display,
     net::SocketAddr,
 };
 
@@ -60,13 +60,13 @@ impl UdpServerHandle {
     pub async fn start_audio_stream_server(
         //ch: &AsyncMixerInputEnd,
         sel: MixerTrackSelector,
-    ) -> ReceiverResult<UdpServerHandle> {
+    ) -> io::Result<UdpServerHandle> {
         let sock = UdpSocket::bind("0.0.0.0:0")
-            .await
-            .map_err(|e| UdpServerHandleError::TokioError(e.to_string()))?;
+            .await?;
+            //.map_err(|e| UdpServerHandleError::TokioError(e.to_string()))?;
         let local_addr = sock
-            .local_addr()
-            .map_err(|e| UdpServerHandleError::TokioError(e.to_string()))?;
+            .local_addr()?;
+            //.map_err(|e| UdpServerHandleError::TokioError(e.to_string()))?;
         info!("local udp addr: {}", local_addr);
 
         let (s, r) = mpsc::channel(1);
@@ -95,7 +95,7 @@ async fn handle_datagram(len: usize, mut buf: Box<[u8]>) -> ReceiverResult<Audio
     );*/
 }
 
-pub async fn udp_server(
+async fn udp_server(
     sock: UdpSocket,
     mut ch: mpsc::Receiver<UdpServerCommands>,
     //mixer: SharedInputMixer,
@@ -156,4 +156,31 @@ pub async fn udp_server(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::SocketAddr;
+
+    use tokio::{io, sync::mpsc};
+    use uuid::Uuid;
+
+    use crate::{mixer::MixerTrackSelector, streamer::{receiver::UdpServerHandle, sender::UdpClientHandle}};
+
+    pub async fn dummy_receiver(
+        _: MixerTrackSelector,
+        //smprt: u32,
+        //chcount: usize,
+    ) -> io::Result<UdpServerHandle> {
+        let local_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
+        let (s, r) = mpsc::channel(1);
+        Ok(UdpServerHandle {
+            _handle: tokio::spawn(async move {
+                assert!(true);
+                Ok(())
+            }),
+            channel: s,
+            local_addr,
+        })
+    }
 }

@@ -52,6 +52,7 @@ impl UdpClientHandle {
             connection_id,
         }
     }
+
     pub async fn stop(&self) -> Result<(), SendError<UdpClientCommands>> {
         self.channel.send(UdpClientCommands::Stop).await
     }
@@ -115,3 +116,33 @@ pub async fn udp_client(
 /*async fn collect_audio_samples(channel: &AsyncMixerOutputEnd) -> (usize, usize) {
     Some(())
 }*/
+
+#[cfg(test)]
+mod tests {
+    use std::net::SocketAddr;
+
+    use tokio::sync::mpsc;
+    use uuid::Uuid;
+
+    use crate::streamer::sender::UdpClientHandle;
+
+    pub async fn dummy_sender(
+        addr: SocketAddr,
+        //smprt: u32,
+        //chcount: usize,
+        connection_id: Uuid,
+        bufsize: usize,
+        sample_rate: usize,
+    ) -> UdpClientHandle {
+        let (s, r) = mpsc::channel(1);
+        UdpClientHandle {
+            _handle: tokio::spawn(async move {
+                log::trace!("dummy connection to {}", addr);
+                assert!(true);
+                Ok(())
+            }),
+            channel: s,
+            connection_id,
+        }
+    }
+}

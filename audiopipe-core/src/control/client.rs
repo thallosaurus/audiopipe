@@ -90,7 +90,8 @@ where
             }
             ControlResponse::Ok => todo!(),
             ControlResponse::Error(control_error) => {
-                error!("{}", control_error)
+                error!("{}", control_error);
+                break
             },
         }
     }

@@ -15,7 +15,7 @@ use crate::{
     audio::GLOBAL_MASTER_OUTPUT_MIXER,
     control::packet::{ControlError, ControlRequest, ControlResponse},
     mixer::{MixerTrackSelector, MixerTrait},
-    streamer::receiver::{ReceiverResult, UdpServerHandle},
+    streamer::receiver::UdpServerHandle,
 };
 
 async fn send_packet(stream: &mut TcpStream, packet: ControlResponse) -> io::Result<()> {
@@ -40,7 +40,7 @@ async fn read_packet(stream: &mut TcpStream, mut buf: &mut [u8]) -> io::Result<C
 pub async fn new_control_server<F, Fut>(sock_addr: String, on_success: F) -> io::Result<()>
 where
     F: Fn(MixerTrackSelector) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = ReceiverResult<UdpServerHandle>> + Send + 'static,
+    Fut: Future<Output = io::Result<UdpServerHandle>> + Send + 'static,
 {
     let ip: Ipv4Addr = sock_addr.parse().expect("parse failed");
     let target = SocketAddr::new(std::net::IpAddr::V4(ip), 6789);
