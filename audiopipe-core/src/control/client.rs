@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use log::{debug, info, trace};
+use log::{debug, error, info, trace};
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -77,7 +77,9 @@ pub async fn tcp_client(
                 *handle.lock().await = Some(UdpClientHandle::start_audio_stream_client(target, uuid, bufsize, srate).await);
             }
             ControlResponse::Ok => todo!(),
-            ControlResponse::Error(control_error) => todo!(),
+            ControlResponse::Error(control_error) => {
+                error!("{}", control_error)
+            },
         }
     }
     Ok(())
