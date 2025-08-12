@@ -1,5 +1,8 @@
 use std::{
-    net::{Ipv4Addr, SocketAddr}, pin::Pin, sync::Arc, task::Poll
+    net::{Ipv4Addr, SocketAddr},
+    pin::Pin,
+    sync::Arc,
+    task::Poll,
 };
 
 use log::{debug, error, info, trace};
@@ -7,16 +10,20 @@ use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
     sync::{
-        mpsc::{self, UnboundedReceiver}, Mutex
+        Mutex,
+        mpsc::{self, UnboundedReceiver},
     },
     task::{JoinError, JoinHandle},
 };
 use uuid::Uuid;
 
 use crate::{
-    control::packet::{ControlRequest, ControlResponse}, mixer::MixerTrackSelector, streamer::sender::AudioSenderHandle
+    control::packet::{ControlRequest, ControlResponse, PacketError, read_packet, send_packet},
+    mixer::MixerTrackSelector,
+    streamer::sender::AudioSenderHandle,
 };
 
+/*
 async fn send_packet(stream: &mut TcpStream, packet: ControlRequest) -> io::Result<()> {
     debug!("Sending Packet: {:?}", packet);
     let json = serde_json::to_vec(&packet).unwrap();
@@ -33,14 +40,14 @@ async fn read_packet(stream: &mut TcpStream, mut buf: &mut [u8]) -> io::Result<C
     let json = serde_json::from_slice(data)?;
     debug!("{:?}", json);
     Ok(json)
-}
+}*/
 
 #[derive(Debug)]
 pub enum TcpClientError {
-    StreamSendError(io::Error),
-    StreamReadError(io::Error),
+    PacketError(PacketError),
+    StreamError(io::Error),
     TcpConnectError(io::Error),
-    JoinError(JoinError)
+    JoinError(JoinError),
 }
 
 #[derive(Debug)]
@@ -55,7 +62,11 @@ pub struct TcpClient {
 }
 
 impl TcpClient {
-    pub fn new<F, Fut>(target_node_addr: String, mixer_track: MixerTrackSelector, on_success: F) -> Self
+    pub fn new<F, Fut>(
+        target_node_addr: String,
+        mixer_track: MixerTrackSelector,
+        on_success: F,
+    ) -> Self
     where
         F: Fn(SocketAddr, Uuid, usize, usize, MixerTrackSelector) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = AudioSenderHandle> + Send + 'static,
@@ -160,7 +171,7 @@ async fn tcp_client<F, Fut>(
     sel: MixerTrackSelector,
     on_success: F, //config: &StreamConfig,
                    //max_buffer_size: u32,
-) -> io::Result<()>
+) -> Result<(), TcpClientError>
 where
     F: Fn(SocketAddr, Uuid, usize, usize, MixerTrackSelector) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = AudioSenderHandle> + Send + 'static,
@@ -169,13 +180,17 @@ where
     let target = SocketAddr::new(std::net::IpAddr::V4(ip), 6789);
     debug!("Connecting to {}", target);
 
-    let mut stream = TcpStream::connect(target).await?;
+    let mut stream = TcpStream::connect(target)
+        .await
+        .map_err(|e| TcpClientError::StreamError(e))?;
     //.map_err(|e|TcpClientError::TcpConnectError(e))?;
     info!("Connected to server {}", target);
 
     // connection packet
     let packet = ControlRequest::OpenStream(crate::mixer::MixerTrackSelector::Stereo(0, 1));
-    send_packet(&mut stream, packet).await?;
+    send_packet(&mut stream, packet)
+        .await
+        .map_err(|e| TcpClientError::PacketError(e))?;
     //.map_err(|e|TcpClientError::StreamSendError(e))?;
 
     // the network message buffer
@@ -186,7 +201,7 @@ where
 
     loop {
         // buffer reuse
-        let json = read_packet(&mut stream, &mut buf).await?;
+        let json = read_packet(&mut stream, &mut buf).await.map_err(|e|TcpClientError::PacketError(e))?;
         //.map_err(|e|TcpClientError::StreamReadError(e))?;
 
         debug!("< Read Packet: {:?}", json);
