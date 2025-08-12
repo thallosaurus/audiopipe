@@ -7,13 +7,9 @@ use std::{
 
 use log::{debug, error, info, trace};
 use tokio::{
-    io::{self, AsyncReadExt, AsyncWriteExt},
-    net::TcpStream,
-    sync::{
-        Mutex,
-        mpsc::{self, UnboundedReceiver},
-    },
-    task::{JoinError, JoinHandle},
+    io, net::TcpStream, sync::{
+        mpsc::{self, UnboundedReceiver}, Mutex
+    }, task::{JoinError, JoinHandle}
 };
 use uuid::Uuid;
 
@@ -22,25 +18,6 @@ use crate::{
     mixer::MixerTrackSelector,
     streamer::sender::AudioSenderHandle,
 };
-
-/*
-async fn send_packet(stream: &mut TcpStream, packet: ControlRequest) -> io::Result<()> {
-    debug!("Sending Packet: {:?}", packet);
-    let json = serde_json::to_vec(&packet).unwrap();
-    trace!("{:?}", json);
-
-    stream.write_all(json.as_slice()).await
-}
-
-async fn read_packet(stream: &mut TcpStream, mut buf: &mut [u8]) -> io::Result<ControlResponse> {
-    let n = stream.read(&mut buf).await?;
-
-    let data = &buf[..n];
-    trace!("{:?}", data);
-    let json = serde_json::from_slice(data)?;
-    debug!("{:?}", json);
-    Ok(json)
-}*/
 
 #[derive(Debug)]
 pub enum TcpClientError {
@@ -166,11 +143,9 @@ impl Future for TcpClient {
 /// dont get tempted to just pipe in the stream config variable
 async fn tcp_client<F, Fut>(
     target_node_addr: String,
-    //r: Receiver<TcpClientCommands>,
     handle: Arc<Mutex<Option<AudioSenderHandle>>>,
     sel: MixerTrackSelector,
-    on_success: F, //config: &StreamConfig,
-                   //max_buffer_size: u32,
+    on_success: F
 ) -> Result<(), TcpClientError>
 where
     F: Fn(SocketAddr, Uuid, usize, usize, MixerTrackSelector) -> Fut + Send + Sync + 'static,

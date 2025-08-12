@@ -28,7 +28,7 @@ pub static GLOBAL_MASTER_INPUT_MIXER: Lazy<Arc<Mutex<Option<AsyncMixerOutputEnd>
 
 /// Sets the global master input mixer - See [GLOBAL_MASTER_INPUT_MIXER]
 pub async fn set_global_master_input_mixer(mixer: AsyncMixerOutputEnd) {
-    let mut master_mixer = GLOBAL_MASTER_INPUT_MIXER.lock().await;;
+    let mut master_mixer = GLOBAL_MASTER_INPUT_MIXER.lock().await;
     *master_mixer = Some(mixer);
 }
 
@@ -151,14 +151,16 @@ pub async fn setup_master_input(
         move |data: &[f32], _: &InputCallbackInfo| {
             let m = mixer.lock().expect("failed to open mixer");
             let (consumed, dropped) = write_to_mixer_sync(m.deref(), data, master_sel);
+            /*
             
             if dropped > consumed {
-                warn!("OVERFLOW - More samples dropped ({}) than consumed ({})", dropped, consumed);
+                warn!("OVERFLOW input - More samples dropped ({}) than consumed ({})", dropped, consumed);
             }
             
             if dropped > 0 {
-                trace!("OVERFLOW - Dropped {} Samples", dropped);
+                trace!("OVERFLOW input - Dropped {} Samples", dropped);
             }
+            */
             //udp_urge_channel.send(true).unwrap();
         },
 

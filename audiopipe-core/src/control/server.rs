@@ -14,7 +14,7 @@ use tokio::{
     net::{TcpListener, TcpStream},
     sync::{
         Mutex,
-        mpsc::{self, Receiver},
+        mpsc::{self, Receiver, UnboundedReceiver},
     },
     task::{JoinError, JoinHandle},
 };
@@ -59,7 +59,7 @@ pub struct TcpServer {
     /// Holds all active Audio Stream Handles
     handles: SharedAudioReceiverHandle,
     // MPSC Channel for program control
-    //channel: mpsc::Sender<TcpServerCommands>,
+    channel: Option<mpsc::UnboundedSender<TcpServerCommands>>,
 }
 
 impl TcpServer {
@@ -68,8 +68,20 @@ impl TcpServer {
         F: Fn(MixerTrackSelector) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = io::Result<AudioReceiverHandle>> + Send + 'static,
     {
-        let (s, r) = mpsc::channel(1);
-
+        let (s, r) = mpsc::unbounded_channel();
+        let mut server = Self::create(target_node_addr, r, on_success);
+        server.channel = Some(s);
+        server
+    }
+    fn create<F, Fut>(
+        target_node_addr: String,
+        mut channel: UnboundedReceiver<TcpServerCommands>,
+        on_success: F,
+    ) -> Self
+    where
+        F: Fn(MixerTrackSelector) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = io::Result<AudioReceiverHandle>> + Send + 'static,
+    {
         // holds all open udp audio streams
         let handles = Arc::new(Mutex::new(HashMap::new()));
 
@@ -82,7 +94,7 @@ impl TcpServer {
                 let target = SocketAddr::new(std::net::IpAddr::V4(ip), 6789);
                 if let Ok(listen) = TcpListener::bind(target).await {
                     //.map_err(|e| TcpServerErrors::SocketError(e))?;
-                    match server_event_loop(listen, h, r, on_success).await {
+                    match server_event_loop(listen, h, channel, on_success).await {
                         Ok(_) => {
                             // event loop exited cleanly
                             debug!("event loop exited cleanly");
@@ -95,7 +107,7 @@ impl TcpServer {
                     // couldn't open TcpListener
                 }
             }),
-            //channel: s,
+            channel: None,
             handles,
         }
     }
@@ -125,7 +137,7 @@ async fn server_event_loop<F, Fut>(
     listen: TcpListener,
     //sock_addr: String,
     handles: Arc<Mutex<HashMap<Uuid, AudioReceiverHandle>>>,
-    r: Receiver<TcpServerCommands>,
+    channel: UnboundedReceiver<TcpServerCommands>,
     on_success: F,
 ) -> Result<(), TcpServerErrors>
 where
@@ -140,48 +152,62 @@ where
 
     //let rc = Arc::new(Mutex::new(r));
     let callback = Arc::new(on_success);
+    let ch = Arc::new(Mutex::new(channel));
 
+    let mut cc = ch.lock().await;
     info!("Server Listening");
     loop {
-        if let Ok((mut socket, _client_addr)) = listen.accept().await {
-            // copy handle for udp streams
-            let handles = Arc::clone(&handles);
+        tokio::select! {
+            c = cc.recv() => {
+                // channel has received a command
+            },
+            res = listen.accept() => {
+                match res {
+                    Ok((mut socket, _client_addr)) => {
+                        // copy handle for udp streams
+                        let handles = Arc::clone(&handles);
 
-            let callback = callback.clone();
+                        let callback = callback.clone();
 
-            // spawn a new task for the connection
-            tokio::spawn(async move {
-                let h = Arc::clone(&handles);
-                // handle client connections
-                match handle_connection(&mut socket, handles.clone(), callback).await {
-                    Ok(_) => {
-                        // handle exited cleanly
-                        debug!("handle stopped cleanly");
-                    }
+                        // spawn a new task for the connection
+                        tokio::spawn(async move {
+                            let h = Arc::clone(&handles);
+                            // handle client connections
+                            match handle_connection(&mut socket, handles.clone(), callback).await {
+                                Ok(_) => {
+                                    // handle exited cleanly
+                                    debug!("handle stopped cleanly");
+                                },
+                                Err(e) => {
+                                    debug!("server event loop encountered an error: {:?}", e);
+                                    // an error occurred on the connection
+                                    match e {
+                                        TcpServerHandlerErrors::HandlerPacketError(packet_error) => {
+                                            error!("packet error: {:?}", packet_error);
+                                            let h = handles.lock().await;
+                                            debug!("active handlers: {}", h.len());
+                                            return;
+                                        }
+                                        TcpServerHandlerErrors::SerdeError(error) => todo!(),
+                                        TcpServerHandlerErrors::AudioStreamError(error) => todo!(),
+                                        TcpServerHandlerErrors::StreamClosed(Some(uuid)) => {
+                                            let _ = remove_handle(h, &uuid).await;
+                                            let h = handles.lock().await;
+                                            debug!("active handlers: {}", h.len());
+                                        }
+                                        _ => {
+                                            // do nothing
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    },
                     Err(e) => {
-                        debug!("server event loop encountered an error: {:?}", e);
-                        // an error occurred on the connection
-                        match e {
-                            TcpServerHandlerErrors::HandlerPacketError(packet_error) => {
-                                error!("packet error: {:?}", packet_error);
-                                let h = handles.lock().await;
-                                debug!("active handlers: {}", h.len());
-                                return;
-                            }
-                            TcpServerHandlerErrors::SerdeError(error) => todo!(),
-                            TcpServerHandlerErrors::AudioStreamError(error) => todo!(),
-                            TcpServerHandlerErrors::StreamClosed(Some(uuid)) => {
-                                let _ = remove_handle(h, &uuid).await;
-                                let h = handles.lock().await;
-                                debug!("active handlers: {}", h.len());
-                            },
-                            _ => {
-                                // do nothing
-                            }
-                        }
+
                     }
                 }
-            });
+            }
         }
     }
 }

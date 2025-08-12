@@ -30,11 +30,9 @@ impl From<String> for MixerTrackSelector {
         let sp: Vec<&str> = value.split(",").collect();
 
         if sp.len() == 1 {
-            
             let v: usize = sp.get(0).unwrap().parse().expect("not a valid number");
             Self::Mono(v)
         } else if sp.len() == 2 {
-            
             let l: usize = sp.get(0).unwrap().parse().expect("not a valid number");
             let r: usize = sp.get(1).unwrap().parse().expect("not a valid number");
             Self::Stereo(l, r)
@@ -120,7 +118,7 @@ impl MixerTrait for AsyncMixerInputEnd {
         Some(Arc::new(Mutex::new(inner)))
     }
 
-    fn create_reference_output(inner: Output) -> Option<Self::Inner> {
+    fn create_reference_output(_: Output) -> Option<Self::Inner> {
         None
     }
 }
@@ -170,7 +168,7 @@ impl MixerTrait for SyncMixerInputEnd {
         Some(Arc::new(std::sync::Mutex::new(inner)))
     }
 
-    fn create_reference_output(inner: Output) -> Option<Self::Inner> {
+    fn create_reference_output(_: Output) -> Option<Self::Inner> {
         None
     }
 }
@@ -216,7 +214,7 @@ impl MixerTrait for AsyncMixerOutputEnd {
         }
     }
 
-    fn create_reference_input(inner: Input) -> Option<Self::Inner> {
+    fn create_reference_input(_: Input) -> Option<Self::Inner> {
         None
     }
 
@@ -266,7 +264,7 @@ impl MixerTrait for SyncMixerOutputEnd {
         }
     }
 
-    fn create_reference_input(inner: Input) -> Option<Self::Inner> {
+    fn create_reference_input(_: Input) -> Option<Self::Inner> {
         None
     }
 
@@ -567,7 +565,11 @@ pub(crate) mod tests {
     type DebugMixer = (AsyncMixerOutputEnd, AsyncMixerInputEnd);
     type SyncDebugMixer = (SyncMixerOutputEnd, SyncMixerInputEnd);
 
-    pub fn debug_mixer(chcount: usize, bufsize_per_channel: usize, sample_rate: usize) -> DebugMixer {
+    pub fn debug_mixer(
+        chcount: usize,
+        bufsize_per_channel: usize,
+        sample_rate: usize,
+    ) -> DebugMixer {
         custom_mixer(chcount, bufsize_per_channel, sample_rate)
     }
 
