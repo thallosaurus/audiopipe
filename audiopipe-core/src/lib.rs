@@ -18,7 +18,7 @@ use crate::{
 pub const MAX_UDP_CLIENT_PAYLOAD_SIZE: usize = 512;
 
 /// Holds everything related to the audio buffer splitter
-//pub mod splitter;
+pub mod splitter;
 
 /// holds all audio related stuff
 pub mod audio;
