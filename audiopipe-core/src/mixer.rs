@@ -23,6 +23,13 @@ impl MixerTrackSelector {
             MixerTrackSelector::Stereo(_, _) => 2,
         }
     }
+
+    pub fn contains(&self, ch: usize) -> bool {
+        match self {
+            MixerTrackSelector::Mono(c) => *c == ch,
+            MixerTrackSelector::Stereo(l, r) => *l == ch || *r == ch,
+        }
+    }
 }
 
 impl From<String> for MixerTrackSelector {
@@ -278,60 +285,38 @@ pub enum MixerTrack<T> {
     Stereo(T, T),
 }
 
-/// Sync Implementation for Mixdown
+/// Syncronously empties the whole mixer and writes it to the output_buffer
 pub fn read_from_mixer_sync<M>(
     mixer: &M,
     output_buffer: &mut [f32],
-    sel: MixerTrackSelector,
-) -> (usize, usize)
+    //sel: MixerTrackSelector,
+) -> Result<(usize, usize), MixerError>
 where
     M: MixerTrait<Inner = SyncRawMixerTrack<Output>>,
 {
-    //let mut ch = 0;
-
+    let mut ch = 0;
     let mut consumed = 0;
     let mut dropped = 0;
-    if let Ok(mixer) = mixer.get_channel(sel) {
-        match mixer {
-            MixerTrack::Mono(c) => {
-                for o in output_buffer.iter_mut() {
-                    let mut c = c.lock().expect("couldn't acquire channel lock");
 
-                    if let Some(v) = c.try_pop() {
-                        *o = v;
-                        consumed += 1;
-                    } else {
-                        *o = Sample::EQUILIBRIUM;
-                        dropped += 1;
-                    }
+    for o in output_buffer.iter_mut() {
+        let raw_channel = mixer.get_raw_channel(ch % mixer.channel_count())?;
+        let mut c = raw_channel.lock().expect("couldn't acquire channel lock");
 
-                    //*o = c.try_pop().unwrap_or(Sample::EQUILIBRIUM);
-                }
-            }
-            MixerTrack::Stereo(l, r) => {
-                let mut ch = 0;
-                for o in output_buffer.iter_mut() {
-                    let c = if ch & 1 == 0 { l.clone() } else { r.clone() };
-
-                    let mut c = c.lock().expect("couldn't acquire channel lock");
-                    if let Some(v) = c.try_pop() {
-                        *o = v;
-                        consumed += 1;
-                    } else {
-                        *o = Sample::EQUILIBRIUM;
-                        dropped += 1;
-                    }
-
-                    ch = (ch + 1) % sel.channel_count();
-                }
-            }
+        if let Some(v) = c.try_pop() {
+            *o = v;
+            consumed += 1;
+        } else {
+            *o = Sample::EQUILIBRIUM;
+            dropped += 1;
         }
+        ch += 1;
     }
 
-    (consumed, dropped)
+    Ok((consumed, dropped))
 }
 
 /// Async Implementation for Mixdown
+/// TODO 
 pub async fn read_from_mixer_async<M>(
     mixer: &M,
     output_buffer: &mut [f32],
@@ -379,6 +364,7 @@ where
 }
 
 /// Function to transfer a input buffer asynchronously
+/// TODO
 pub async fn write_to_mixer_async<M>(
     mixer: &M,
     input_buffer: &[f32],
@@ -427,6 +413,7 @@ where
 }
 
 /// Function to transfer the CPAL buffer synchronously
+/// TODO
 pub fn write_to_mixer_sync<M>(
     mixer: &M,
     input_buffer: &[f32],
@@ -631,7 +618,7 @@ pub(crate) mod tests {
         write_to_mixer_sync(&input, input_data.as_slice(), MixerTrackSelector::Mono(0));
 
         let mut output_buffer = vec![0.0f32; bufsize];
-        read_from_mixer_sync(&output, &mut output_buffer, MixerTrackSelector::Mono(0));
+        read_from_mixer_sync(&output, &mut output_buffer).unwrap();
 
         assert_eq!(input_data, output_buffer);
     }
@@ -679,11 +666,29 @@ pub(crate) mod tests {
 
         // stereo data is twice as long because its two channels
         let mut output_buffer = vec![0.0f32; bufsize * 2];
-        read_from_mixer_sync(
-            &output,
-            &mut output_buffer,
+        read_from_mixer_sync(&output, &mut output_buffer).unwrap();
+
+        assert_eq!(input_data, output_buffer);
+    }
+
+    #[test]
+    fn test_eight_channel_mixer_sync() {
+        // TODO add tests here
+        let bufsize = 4;
+        let chcount = 4;
+
+        let (output, input) = sync_debug_mixer(16, bufsize, 44100);
+
+        let input_data = stereo_test_data(bufsize * chcount);
+        write_to_mixer_sync(
+            &input,
+            input_data.as_slice(),
             MixerTrackSelector::Stereo(0, 1),
         );
+
+        // stereo data is twice as long because its two channels
+        let mut output_buffer = vec![0.0f32; bufsize * chcount];
+        read_from_mixer_sync(&output, &mut output_buffer).unwrap();
 
         assert_eq!(input_data, output_buffer);
     }

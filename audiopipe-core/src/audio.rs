@@ -8,7 +8,7 @@ use log::{debug, trace, warn};
 use once_cell::sync::Lazy;
 use tokio::sync::Mutex;
 
-use crate::mixer::{read_from_mixer_sync, write_to_mixer_sync, AsyncMixerInputEnd, AsyncMixerOutputEnd, MixerTrackSelector, SyncMixerInputEnd, SyncMixerOutputEnd};
+use crate::{mixer::{read_from_mixer_sync, write_to_mixer_sync, AsyncMixerInputEnd, AsyncMixerOutputEnd, MixerTrackSelector, MixerTrait, SyncMixerInputEnd, SyncMixerOutputEnd}, splitter::ChannelMerger};
 
 /// The global output mixer used by the receiver to output audio
 /// To create a default mixer pair, use [crate::mixer::default_server_mixer] or [crate::mixer::default_client_mixer]
@@ -120,11 +120,13 @@ pub async fn setup_master_output(
     
     device.build_output_stream(
         &config,
-        move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+        move |output_data: &mut [f32], _: &cpal::OutputCallbackInfo| {
             let mixer = mixer.lock().expect("mixer not available");
             //trace!("Callback wants {:?} ", data.len());
             
-            read_from_mixer_sync(mixer.deref(), data, master_sel);
+            // write the data from the mixer to the sound card buffer
+            read_from_mixer_sync(mixer.deref(), output_data).unwrap();
+
             //.mixdown(data);
             let consumed = 0;
             trace!("Consumed {} bytes", consumed);
