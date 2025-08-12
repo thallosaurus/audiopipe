@@ -315,8 +315,7 @@ where
     Ok((consumed, dropped))
 }
 
-/// Async Implementation for Mixdown
-/// TODO 
+/// TODO Async Implementation for Mixdown
 pub async fn read_from_mixer_async<M>(
     mixer: &M,
     output_buffer: &mut [f32],
@@ -363,8 +362,7 @@ where
     (consumed, dropped)
 }
 
-/// Function to transfer a input buffer asynchronously
-/// TODO
+/// TODO Function to transfer a input buffer asynchronously
 pub async fn write_to_mixer_async<M>(
     mixer: &M,
     input_buffer: &[f32],
@@ -412,8 +410,7 @@ where
     (consumed, dropped)
 }
 
-/// Function to transfer the CPAL buffer synchronously
-/// TODO
+/// TODO Function to transfer the CPAL buffer synchronously
 pub fn write_to_mixer_sync<M>(
     mixer: &M,
     input_buffer: &[f32],
@@ -593,7 +590,6 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn test_mono_mixer_async() {
-        // TODO add tests here
         let bufsize = 16;
 
         let (output, input) = debug_mixer(1, 16, 44100);
@@ -609,7 +605,6 @@ pub(crate) mod tests {
 
     #[test]
     fn test_mono_mixer_sync() {
-        // TODO add tests here
         let bufsize = 16;
 
         let (output, input) = sync_debug_mixer(1, 16, 44100);
@@ -625,7 +620,6 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn test_stereo_mixer_async() {
-        // TODO add tests here
         let bufsize = 16;
 
         let (output, input) = debug_mixer(2, bufsize, 44100);
@@ -652,7 +646,6 @@ pub(crate) mod tests {
 
     #[test]
     fn test_stereo_mixer_sync() {
-        // TODO add tests here
         let bufsize = 16;
 
         let (output, input) = sync_debug_mixer(2, bufsize, 44100);
@@ -673,7 +666,6 @@ pub(crate) mod tests {
 
     #[test]
     fn test_eight_channel_mixer_sync() {
-        // TODO add tests here
         let bufsize = 4;
         let chcount = 4;
 
