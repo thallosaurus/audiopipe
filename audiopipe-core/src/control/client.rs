@@ -7,7 +7,7 @@ use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
     sync::{
-        mpsc::{self, Receiver, Sender, UnboundedReceiver}, Mutex
+        mpsc::{self, UnboundedReceiver}, Mutex
     },
     task::{JoinError, JoinHandle},
 };
@@ -141,7 +141,7 @@ impl Future for TcpClient {
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
-        let mut task = self.get_mut();
+        let task = self.get_mut();
 
         match Pin::new(&mut task._task).poll(cx) {
             Poll::Ready(Ok(res)) => Poll::Ready(Ok(())),

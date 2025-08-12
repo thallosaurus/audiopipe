@@ -121,7 +121,7 @@ pub async fn udp_client(
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::{net::SocketAddr, thread::yield_now, time::Duration};
+    use std::{net::SocketAddr, time::Duration};
 
     use tokio::sync::mpsc::{self};
     use uuid::Uuid;

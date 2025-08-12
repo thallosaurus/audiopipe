@@ -1,5 +1,4 @@
 use std::{
-    cell::RefCell,
     collections::HashMap,
     fmt::Debug,
     io::Error,
@@ -9,10 +8,9 @@ use std::{
     task::Poll,
 };
 
-use log::{debug, error, info, trace};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use log::{debug, error, info};
 use tokio::{
-    io::{self, AsyncReadExt, AsyncWriteExt},
+    io::{self},
     net::{TcpListener, TcpStream},
     sync::{
         Mutex,
@@ -30,7 +28,7 @@ use crate::{
         ControlError, ControlRequest, ControlResponse, PacketError, read_packet, send_packet,
     },
     mixer::{MixerTrackSelector, MixerTrait},
-    streamer::receiver::{AudioReceiverHandle, UdpServerHandleError},
+    streamer::receiver::AudioReceiverHandle,
 };
 
 enum TcpServerCommands {
@@ -110,7 +108,7 @@ impl Future for TcpServer {
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
-        let mut task = self.get_mut();
+        let task = self.get_mut();
 
         match Pin::new(&mut task._task).poll(cx) {
             Poll::Ready(Ok(res)) => Poll::Ready(Ok(())),

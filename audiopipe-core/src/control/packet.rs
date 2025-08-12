@@ -9,7 +9,7 @@ use tokio::{
 use uuid::Uuid;
 
 use crate::{
-    control::{server::{TcpServerErrors, TcpServerHandlerErrors}, BufferSize, Port, SampleRate},
+    control::{server::TcpServerHandlerErrors, BufferSize, Port, SampleRate},
     mixer::MixerTrackSelector,
     streamer::receiver::UdpServerHandleError,
 };

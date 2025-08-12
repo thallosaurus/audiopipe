@@ -15,7 +15,7 @@ mod tests {
     use std::time::Duration;
 
     use log::{debug, error};
-    use tokio::sync::mpsc::{channel, unbounded_channel};
+    use tokio::sync::mpsc::unbounded_channel;
 
     use crate::{
         audio::{set_global_master_input_mixer, set_global_master_output_mixer},
