@@ -1,6 +1,8 @@
 use std::{
+    cell::RefCell,
     collections::HashMap,
     fmt::Debug,
+    io::Error,
     net::{Ipv4Addr, SocketAddr},
     pin::Pin,
     sync::Arc,
@@ -13,7 +15,8 @@ use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
     sync::{
-        mpsc::{self, Receiver}, Mutex
+        Mutex,
+        mpsc::{self, Receiver},
     },
     task::{JoinError, JoinHandle},
 };
@@ -27,7 +30,7 @@ use crate::{
         ControlError, ControlRequest, ControlResponse, PacketError, read_packet, send_packet,
     },
     mixer::{MixerTrackSelector, MixerTrait},
-    streamer::receiver::AudioReceiverHandle,
+    streamer::receiver::{AudioReceiverHandle, UdpServerHandleError},
 };
 
 enum TcpServerCommands {
@@ -38,7 +41,7 @@ enum TcpServerCommands {
 pub enum TcpServerErrors {
     ClientDisconnectEof,
     SocketError(io::Error),
-    JoinError(JoinError)
+    JoinError(JoinError),
 }
 
 #[derive(Debug)]
@@ -46,6 +49,8 @@ pub enum TcpServerHandlerErrors {
     //SocketError(io::Error),
     HandlerPacketError(PacketError),
     SerdeError(serde_json::Error),
+    AudioStreamError(Error),
+    StreamClosed(Option<Uuid>),
 }
 
 /// struct that represents a tcp server
@@ -75,12 +80,21 @@ impl TcpServer {
         Self {
             _task: tokio::spawn(async move {
                 assert!(true);
-                match server_event_loop(target_node_addr, h, r, on_success).await {
-                    Ok(_) => {
-                        // event loop exited cleanly
-                        debug!("event loop exited cleanly");
+                let ip: Ipv4Addr = target_node_addr.parse().expect("parse failed");
+                let target = SocketAddr::new(std::net::IpAddr::V4(ip), 6789);
+                if let Ok(listen) = TcpListener::bind(target).await {
+                    //.map_err(|e| TcpServerErrors::SocketError(e))?;
+                    match server_event_loop(listen, h, r, on_success).await {
+                        Ok(_) => {
+                            // event loop exited cleanly
+                            debug!("event loop exited cleanly");
+                        }
+                        Err(e) => {
+                            error!("event loop encounted an error: {:?}", e);
+                        }
                     }
-                    Err(e) => {}
+                } else {
+                    // couldn't open TcpListener
                 }
             }),
             //channel: s,
@@ -99,13 +113,9 @@ impl Future for TcpServer {
         let mut task = self.get_mut();
 
         match Pin::new(&mut task._task).poll(cx) {
-            Poll::Ready(Ok(res)) => {
-                Poll::Ready(Ok(()))
-            },
-            Poll::Ready(Err(res)) => {
-                Poll::Ready(Err(TcpServerErrors::JoinError(res)))
-            }
-            Poll::Pending => todo!(),
+            Poll::Ready(Ok(res)) => Poll::Ready(Ok(())),
+            Poll::Ready(Err(res)) => Poll::Ready(Err(TcpServerErrors::JoinError(res))),
+            Poll::Pending => Poll::Pending,
         }
     }
 }
@@ -114,7 +124,8 @@ impl Future for TcpServer {
 
 /// The entry point to the tcp communication server
 async fn server_event_loop<F, Fut>(
-    sock_addr: String,
+    listen: TcpListener,
+    //sock_addr: String,
     handles: Arc<Mutex<HashMap<Uuid, AudioReceiverHandle>>>,
     r: Receiver<TcpServerCommands>,
     on_success: F,
@@ -123,11 +134,11 @@ where
     F: Fn(MixerTrackSelector) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = io::Result<AudioReceiverHandle>> + Send + 'static,
 {
-    let ip: Ipv4Addr = sock_addr.parse().expect("parse failed");
+    /*let ip: Ipv4Addr = sock_addr.parse().expect("parse failed");
     let target = SocketAddr::new(std::net::IpAddr::V4(ip), 6789);
     let listen = TcpListener::bind(target)
         .await
-        .map_err(|e| TcpServerErrors::SocketError(e))?;
+        .map_err(|e| TcpServerErrors::SocketError(e))?;*/
 
     //let rc = Arc::new(Mutex::new(r));
     let callback = Arc::new(on_success);
@@ -142,15 +153,34 @@ where
 
             // spawn a new task for the connection
             tokio::spawn(async move {
+                let h = Arc::clone(&handles);
                 // handle client connections
-                match handle_connection(&mut socket, handles, callback).await {
+                match handle_connection(&mut socket, handles.clone(), callback).await {
                     Ok(_) => {
                         // handle exited cleanly
                         debug!("handle stopped cleanly");
                     }
                     Err(e) => {
+                        debug!("server event loop encountered an error: {:?}", e);
                         // an error occurred on the connection
-                        debug!("handle error: {:?}", e);
+                        match e {
+                            TcpServerHandlerErrors::HandlerPacketError(packet_error) => {
+                                error!("packet error: {:?}", packet_error);
+                                let h = handles.lock().await;
+                                debug!("active handlers: {}", h.len());
+                                return;
+                            }
+                            TcpServerHandlerErrors::SerdeError(error) => todo!(),
+                            TcpServerHandlerErrors::AudioStreamError(error) => todo!(),
+                            TcpServerHandlerErrors::StreamClosed(Some(uuid)) => {
+                                let _ = remove_handle(h, &uuid).await;
+                                let h = handles.lock().await;
+                                debug!("active handlers: {}", h.len());
+                            },
+                            _ => {
+                                // do nothing
+                            }
+                        }
                     }
                 }
             });
@@ -167,17 +197,16 @@ where
     F: Fn(MixerTrackSelector) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = io::Result<AudioReceiverHandle>> + Send + 'static,
 {
-    let mut buf = vec![0; 8196];
+    let mut packet_buffer = vec![0; 8196];
     //let handles = child_handles.lock().await;
+    let current_id: Arc<Mutex<Option<Uuid>>> = Arc::new(Mutex::new(None));
     loop {
         let handles = Arc::clone(&handles);
 
-        // TODO tcp error handling
-        let packet = read_packet(&mut socket, &mut buf)
-            .await
-            .map_err(|e| TcpServerHandlerErrors::HandlerPacketError(e))?;
+        let packet = read_packet(&mut socket, &mut packet_buffer).await;
+
         match packet {
-            ControlRequest::OpenStream(mixer_track_selector) => {
+            Ok(ControlRequest::OpenStream(mixer_track_selector)) => {
                 let connection_id = uuid::Uuid::new_v4();
 
                 let mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await;
@@ -185,33 +214,30 @@ where
 
                 let callback = on_success.clone();
 
-                let cb_ret = (callback)(mixer_track_selector).await;
-                match cb_ret {
-                    Ok(handle) => {
-                        let local_addr = handle.local_addr.clone();
-                        handles.lock().await.insert(connection_id, handle);
-                        
-                        info!("new udp connection id {}", connection_id);
-                        send_packet(
-                            &mut socket,
-                            ControlResponse::Stream(
-                                connection_id,
-                                local_addr.port(),
-                                mixer.buffer_size(),
-                                mixer.sample_rate(),
-                            ),
-                        )
-                        .await
-                        // TODO Implement way for the callback to notify back when its done
-                        .map_err(|e| TcpServerHandlerErrors::HandlerPacketError(e))?
+                let h = (callback)(mixer_track_selector)
+                    .await
+                    .map_err(|e| TcpServerHandlerErrors::AudioStreamError(e))?;
 
-                    }
-                    Err(err) => {
-                        error!("{}", err);
-                    }
-                }
+                let local_addr = h.local_addr.clone();
+                handles.lock().await.insert(connection_id, h);
+
+                info!("new udp connection id {}", connection_id);
+                *current_id.lock().await = Some(connection_id);
+
+                send_packet(
+                    &mut socket,
+                    ControlResponse::Stream(
+                        connection_id,
+                        local_addr.port(),
+                        mixer.buffer_size(),
+                        mixer.sample_rate(),
+                    ),
+                )
+                .await
+                // TODO Implement way for the callback to notify back when its done
+                .map_err(|e| TcpServerHandlerErrors::HandlerPacketError(e))?;
             }
-            ControlRequest::CloseStream(uuid) => {
+            Ok(ControlRequest::CloseStream(uuid)) => {
                 if let Some(h) = handles.lock().await.remove(&uuid) {
                     h.stop().await.unwrap();
                     send_packet(&mut socket, ControlResponse::Ok).await.unwrap();
@@ -225,6 +251,20 @@ where
                     .unwrap();
                 }
             }
+            Err(e) => {
+                return Err(TcpServerHandlerErrors::StreamClosed(
+                    *current_id.lock().await,
+                ));
+            }
         }
+    }
+}
+
+async fn remove_handle(handles: SharedAudioReceiverHandle, id: &Uuid) -> Result<(), ControlError> {
+    if let Some(h) = handles.lock().await.remove(id) {
+        //h.stop().await.unwrap();
+        Ok(())
+    } else {
+        Err(ControlError::StreamIdNotFound)
     }
 }

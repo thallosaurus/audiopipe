@@ -70,7 +70,7 @@ pub async fn init_sender(
 
     master_stream.play().unwrap();
 
-    TcpClient::new(target, AudioSenderHandle::new)
+    TcpClient::new(target, master_track_selector, AudioSenderHandle::new)
 }
 
 pub async fn init_receiver(

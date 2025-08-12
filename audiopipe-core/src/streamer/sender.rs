@@ -13,8 +13,7 @@ use tokio::{
 use uuid::Uuid;
 
 use crate::{
-    audio::GLOBAL_MASTER_INPUT_MIXER,
-    streamer::packet::{AudioPacket, AudioPacketHeader},
+    audio::GLOBAL_MASTER_INPUT_MIXER, mixer::{read_from_mixer_async, MixerTrackSelector}, streamer::packet::{AudioPacket, AudioPacketHeader}
 };
 
 pub enum UdpClientCommands {
@@ -36,6 +35,7 @@ impl AudioSenderHandle {
         connection_id: Uuid,
         bufsize: usize,
         sample_rate: usize,
+        track_selector: MixerTrackSelector
     ) -> AudioSenderHandle {
         let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
 
@@ -47,7 +47,7 @@ impl AudioSenderHandle {
         //info!("Starting UDP Sender");
         AudioSenderHandle {
             //_handle: Box::pin(udp_client(sock, bufsize * chcount as u32, r)),
-            _handle: tokio::spawn(udp_client(sock, r, bufsize, sample_rate, connection_id)),
+            _handle: tokio::spawn(udp_client(sock, r, bufsize, sample_rate, connection_id, track_selector)),
             channel: s,
             connection_id,
         }
@@ -64,32 +64,34 @@ pub async fn udp_client(
     bufsize: usize, //    track: MixerTrack<AsyncRawMixerTrack<Output>>,
     sample_rate: usize,
     connection_id: Uuid,
+    sel: MixerTrackSelector
 ) -> io::Result<()> {
     info!("Starting UDP Sender");
 
     // set udp network buffer to the buffersize determined by the server
-    let buf: Vec<f32> = vec![0.0f32; bufsize];
+    let mut buf: Vec<f32> = vec![0.0f32; bufsize];
 
     let ms = (bufsize as f64 / sample_rate as f64) * 1000.0;
 
     // TODO move this to channel selector somehow
-    let channels = 2;
+    //let channels = 2;
 
     loop {
         let input = GLOBAL_MASTER_INPUT_MIXER.lock().await;
 
         let input = input.as_ref().expect("failed to open mixer");
-
+        
         tokio::select! {
-        Some(cmd) = ch.recv() => {
-            match cmd {
-                UdpClientCommands::Stop => break,
-            }
-        },
-
-        // fixed-interval push
+            Some(cmd) = ch.recv() => {
+                match cmd {
+                    UdpClientCommands::Stop => break,
+                }
+            },
+            
+            // fixed-interval push
             _ = tokio::time::sleep(Duration::from_millis(ms as u64)) => {
-                //TODO Collect data
+                //TODO add input channel selector
+                read_from_mixer_async(input, &mut buf, sel);
 
                 let payload: &[u8] = bytemuck::try_cast_slice(&buf).unwrap();
 
@@ -98,7 +100,7 @@ pub async fn udp_client(
                         connection_id,
                         timestamp: SystemTime::now(),
                         sample_rate,
-                        channels
+                        channels: sel.channel_count()
                     },
                     payload: Vec::from(payload)
                 };
@@ -119,12 +121,12 @@ pub async fn udp_client(
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::net::SocketAddr;
+    use std::{net::SocketAddr, thread::yield_now, time::Duration};
 
     use tokio::sync::mpsc::{self};
     use uuid::Uuid;
 
-    use crate::streamer::sender::AudioSenderHandle;
+    use crate::{mixer::MixerTrackSelector, streamer::sender::AudioSenderHandle};
 
     pub async fn dummy_sender(
         addr: SocketAddr,
@@ -133,12 +135,16 @@ pub(crate) mod tests {
         connection_id: Uuid,
         bufsize: usize,
         sample_rate: usize,
+        sel: MixerTrackSelector,
     ) -> AudioSenderHandle {
         let (s, r) = mpsc::channel(1);
         AudioSenderHandle {
             _handle: tokio::spawn(async move {
                 log::debug!("dummy connection to {}", addr);
                 assert!(true);
+                loop {
+                    tokio::time::sleep(Duration::from_millis(10000)).await;
+                }
                 Ok(())
             }),
             channel: s,

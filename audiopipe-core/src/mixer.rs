@@ -17,7 +17,7 @@ pub enum MixerTrackSelector {
 }
 
 impl MixerTrackSelector {
-    fn channel_count(&self) -> usize {
+    pub fn channel_count(&self) -> usize {
         match self {
             MixerTrackSelector::Mono(_) => 1,
             MixerTrackSelector::Stereo(_, _) => 2,

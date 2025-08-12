@@ -1,9 +1,3 @@
-use std::{collections::HashMap, sync::Arc};
-
-use tokio::sync::Mutex;
-
-
-
 pub mod client;
 mod packet;
 pub mod server;
@@ -18,13 +12,16 @@ type Port = u16;
 
 #[cfg(test)]
 mod tests {
-    use log::error;
+    use std::time::Duration;
+
+    use log::{debug, error};
+    use tokio::sync::mpsc::{channel, unbounded_channel};
 
     use crate::{
         audio::{set_global_master_input_mixer, set_global_master_output_mixer},
-        control::{client::TcpClient, server::TcpServer},
+        control::{client::{TcpClient, TcpClientCommands}, server::TcpServer},
         mixer::{
-            default_client_mixer, tests::debug_mixer,
+            default_client_mixer, tests::debug_mixer, MixerTrackSelector,
         },
         streamer::{receiver::tests::dummy_receiver, sender::tests::dummy_sender},
         tests::init,
@@ -42,6 +39,7 @@ mod tests {
 
         let server = TcpServer::new(String::from(server_address), dummy_receiver);
 
+        
         // start the server in the background
         tokio::spawn(async move {
             if let Err(e) = server.await {
@@ -49,14 +47,26 @@ mod tests {
                 assert!(false);
             }
         });
-
+        
+        let (s, r) = unbounded_channel();
         let (s_output, _) = default_client_mixer(2, 1024, 44100);
         set_global_master_input_mixer(s_output).await;
-        let client = TcpClient::new(String::from(server_address), dummy_sender);
+        let client = TcpClient::create(String::from(server_address), r, MixerTrackSelector::Mono(0), dummy_sender);
+        
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(1000)).await;
+            s.send(TcpClientCommands::Stop).unwrap();
+        });
+        
+        client.await.unwrap();
 
-        let (result,) = tokio::join!(client);
+        debug!("client exited");
+
+        assert!(true)
+
+
+        //let (result,) = tokio::join!(client);
 
         // client has shut down cleanly
-        assert!(result.is_ok());
     }
 }

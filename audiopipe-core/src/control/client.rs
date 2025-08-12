@@ -1,5 +1,5 @@
 use std::{
-    net::{Ipv4Addr, SocketAddr}, sync::Arc, task::Poll
+    net::{Ipv4Addr, SocketAddr}, pin::Pin, sync::Arc, task::Poll
 };
 
 use log::{debug, error, info, trace};
@@ -7,16 +7,14 @@ use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
     sync::{
-        Mutex,
-        mpsc::{self, Receiver},
+        mpsc::{self, Receiver, Sender, UnboundedReceiver}, Mutex
     },
-    task::JoinHandle,
+    task::{JoinError, JoinHandle},
 };
 use uuid::Uuid;
 
 use crate::{
-    control::packet::{ControlRequest, ControlResponse},
-    streamer::sender::AudioSenderHandle,
+    control::packet::{ControlRequest, ControlResponse}, mixer::MixerTrackSelector, streamer::sender::AudioSenderHandle
 };
 
 async fn send_packet(stream: &mut TcpStream, packet: ControlRequest) -> io::Result<()> {
@@ -37,37 +35,91 @@ async fn read_packet(stream: &mut TcpStream, mut buf: &mut [u8]) -> io::Result<C
     Ok(json)
 }
 
-enum TcpClientError {
+#[derive(Debug)]
+pub enum TcpClientError {
     StreamSendError(io::Error),
     StreamReadError(io::Error),
-    TcpConnectError(io::Error)
+    TcpConnectError(io::Error),
+    JoinError(JoinError)
 }
 
-enum TcpClientCommands {
+#[derive(Debug)]
+pub enum TcpClientCommands {
     Stop,
 }
 
 pub struct TcpClient {
     pub _task: JoinHandle<io::Result<()>>,
-    channel: mpsc::Sender<TcpClientCommands>,
+    channel: Option<mpsc::UnboundedSender<TcpClientCommands>>,
     handle: Arc<Mutex<Option<AudioSenderHandle>>>,
 }
 
 impl TcpClient {
-    pub fn new<F, Fut>(target_node_addr: String, on_success: F) -> Self
+    pub fn new<F, Fut>(target_node_addr: String, mixer_track: MixerTrackSelector, on_success: F) -> Self
     where
-        F: Fn(SocketAddr, Uuid, usize, usize) -> Fut + Send + Sync + 'static,
+        F: Fn(SocketAddr, Uuid, usize, usize, MixerTrackSelector) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = AudioSenderHandle> + Send + 'static,
     {
-        let (s, r) = mpsc::channel(1);
+        let (s, r) = mpsc::unbounded_channel();
+        let mut c = Self::create(target_node_addr, r, mixer_track, on_success);
+        c.channel = Some(s);
+        c
+    }
 
+    pub fn create<F, Fut>(
+        target_node_addr: String,
+        mut channel: UnboundedReceiver<TcpClientCommands>,
+        mixer_track: MixerTrackSelector,
+        on_success: F,
+    ) -> Self
+    where
+        F: Fn(SocketAddr, Uuid, usize, usize, MixerTrackSelector) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = AudioSenderHandle> + Send + 'static,
+    {
         // Stores the current udp connection
         let handle: Arc<Mutex<Option<AudioSenderHandle>>> = Arc::new(Mutex::new(None));
+        let h = Arc::clone(&handle);
 
         Self {
-            _task: tokio::spawn(tcp_client(target_node_addr, r, handle.clone(), on_success)),
-            channel: s,
-            handle,
+            _task: tokio::spawn(async move {
+                let h = Arc::clone(&h);
+                //let c = Arc::clone(&channel);
+
+                //let mut channel = c.lock().await;
+                tokio::select! {
+                    c = tcp_client(target_node_addr, h, mixer_track, on_success) => {
+                        match c {
+                            Ok(_) => {
+                                // tcp client exited cleanly
+                                trace!("tcp client: exited cleanly");
+                            },
+                            Err(e) => {
+                                // tcp client encountered an error
+                                trace!("tcp client: encountered an error {:?}", e);
+                            },
+                        }
+                    }
+                    cc = channel.recv() => {
+                        match cc {
+                            Some(TcpClientCommands::Stop) => {
+                                // stop request
+                                info!("tcp client stop request");
+                                return Ok(())
+                            },
+                            None => {
+                                // error while receiving
+                            },
+                        }
+                    }
+                }
+
+                trace!("reached after client state");
+
+                Ok(())
+            }),
+
+            handle: Arc::clone(&handle),
+            channel: None,
         }
     }
 
@@ -76,23 +128,25 @@ impl TcpClient {
             h.stop().await.unwrap();
         }
 
-        self.channel.send(TcpClientCommands::Stop).await.unwrap();
+        if let Some(c) = &self.channel {
+            c.send(TcpClientCommands::Stop).unwrap();
+        }
     }
 }
 
 impl Future for TcpClient {
-    type Output = io::Result<()>;
+    type Output = Result<(), TcpClientError>;
 
     fn poll(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
-        let task = self.get_mut();
+        let mut task = self.get_mut();
 
-        if task._task.is_finished() {
-            Poll::Ready(Ok(()))
-        } else {
-            Poll::Pending
+        match Pin::new(&mut task._task).poll(cx) {
+            Poll::Ready(Ok(res)) => Poll::Ready(Ok(())),
+            Poll::Ready(Err(res)) => Poll::Ready(Err(TcpClientError::JoinError(res))),
+            Poll::Pending => Poll::Pending,
         }
     }
 }
@@ -101,13 +155,14 @@ impl Future for TcpClient {
 /// dont get tempted to just pipe in the stream config variable
 async fn tcp_client<F, Fut>(
     target_node_addr: String,
-    r: Receiver<TcpClientCommands>,
+    //r: Receiver<TcpClientCommands>,
     handle: Arc<Mutex<Option<AudioSenderHandle>>>,
+    sel: MixerTrackSelector,
     on_success: F, //config: &StreamConfig,
                    //max_buffer_size: u32,
 ) -> io::Result<()>
 where
-    F: Fn(SocketAddr, Uuid, usize, usize) -> Fut + Send + Sync + 'static,
+    F: Fn(SocketAddr, Uuid, usize, usize, MixerTrackSelector) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = AudioSenderHandle> + Send + 'static,
 {
     let ip: Ipv4Addr = target_node_addr.parse().expect("parse failed");
@@ -151,8 +206,7 @@ where
 
                 let cb = callback.clone();
 
-                *handle.lock().await = Some((cb)(target, uuid, bufsize, srate).await);
-                break
+                *handle.lock().await = Some((cb)(target, uuid, bufsize, srate, sel).await);
             }
             ControlResponse::Ok => todo!(),
             ControlResponse::Error(control_error) => {

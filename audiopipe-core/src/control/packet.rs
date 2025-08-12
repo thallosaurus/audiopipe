@@ -9,7 +9,7 @@ use tokio::{
 use uuid::Uuid;
 
 use crate::{
-    control::{BufferSize, Port, SampleRate, server::TcpServerErrors},
+    control::{server::{TcpServerErrors, TcpServerHandlerErrors}, BufferSize, Port, SampleRate},
     mixer::MixerTrackSelector,
     streamer::receiver::UdpServerHandleError,
 };
@@ -56,6 +56,12 @@ pub enum PacketError {
     PacketSendError(io::Error),
     SerdeError(serde_json::Error),
     PacketReadError(io::Error),
+}
+
+impl Into<TcpServerHandlerErrors> for PacketError {
+    fn into(self) -> TcpServerHandlerErrors {
+        TcpServerHandlerErrors::HandlerPacketError(self)
+    }
 }
 
 pub(crate) async fn read_packet<T>(
