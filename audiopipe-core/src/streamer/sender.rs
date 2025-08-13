@@ -91,7 +91,7 @@ pub async fn udp_client(
             // fixed-interval push
             _ = tokio::time::sleep(Duration::from_millis(ms as u64)) => {
                 //TODO add input channel selector
-                read_from_mixer_async(input, &mut buf, sel).await;
+                let (consumed, dropped) = read_from_mixer_async(input, &mut buf).await.unwrap();
 
                 let payload: &[u8] = bytemuck::try_cast_slice(&buf).unwrap();
 
