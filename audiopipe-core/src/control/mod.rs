@@ -54,7 +54,7 @@ mod tests {
         let client = TcpClient::create(String::from(server_address), r, MixerTrackSelector::Mono(0), dummy_sender);
         
         tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(1000)).await;
+            tokio::time::sleep(Duration::from_millis(500)).await;
             s.send(TcpClientCommands::Stop).unwrap();
         });
         

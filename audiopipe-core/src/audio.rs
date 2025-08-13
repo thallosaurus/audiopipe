@@ -152,7 +152,7 @@ pub async fn setup_master_input(
         &config,
         move |data: &[f32], _: &InputCallbackInfo| {
             let m = mixer.lock().expect("failed to open mixer");
-            let (consumed, dropped) = write_to_mixer_sync(m.deref(), data, master_sel);
+            let (consumed, dropped) = write_to_mixer_sync(m.deref(), data, master_sel).unwrap();
             /*
             
             if dropped > consumed {

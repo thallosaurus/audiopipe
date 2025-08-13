@@ -435,44 +435,43 @@ pub fn write_to_mixer_sync<M>(
     mixer: &M,
     input_buffer: &[f32],
     sel: MixerTrackSelector,
-) -> (usize, usize)
+) -> Result<(usize, usize), MixerError>
 where
     M: MixerTrait<Inner = SyncRawMixerTrack<Input>>,
 {
     let mut consumed = 0;
     let mut dropped = 0;
-    if let Ok(mixer) = mixer.get_channel(sel) {
-        match mixer {
-            MixerTrack::Mono(c) => {
-                for o in input_buffer.iter() {
-                    let mut c = c.lock().expect("couldn't acquire channel lock");
+    let mixer = mixer.get_channel(sel)?;
+    match mixer {
+        MixerTrack::Mono(c) => {
+            for o in input_buffer.iter() {
+                let mut c = c.lock().expect("couldn't acquire channel lock");
 
-                    if let Ok(_) = c.try_push(*o) {
-                        consumed += 1;
-                    } else {
-                        dropped += 1;
-                    }
+                if let Ok(_) = c.try_push(*o) {
+                    consumed += 1;
+                } else {
+                    dropped += 1;
                 }
             }
-            MixerTrack::Stereo(l, r) => {
-                let mut ch = 0;
-                for o in input_buffer.iter() {
-                    let c = if ch & 1 == 0 { l.clone() } else { r.clone() };
-                    let mut c = c.lock().expect("couldn't acquire channel lock");
+        }
+        MixerTrack::Stereo(l, r) => {
+            let mut ch = 0;
+            for o in input_buffer.iter() {
+                let c = if ch & 1 == 0 { l.clone() } else { r.clone() };
+                let mut c = c.lock().expect("couldn't acquire channel lock");
 
-                    if let Ok(_) = c.try_push(*o) {
-                        consumed += 1;
-                    } else {
-                        dropped += 1;
-                    }
-
-                    ch = (ch + 1) % sel.channel_count();
+                if let Ok(_) = c.try_push(*o) {
+                    consumed += 1;
+                } else {
+                    dropped += 1;
                 }
+
+                ch = (ch + 1) % sel.channel_count();
             }
         }
     }
 
-    (consumed, dropped)
+    Ok((consumed, dropped))
 }
 
 /// Constructs a default server mixer with sync mixer output and async mixer input
@@ -559,6 +558,8 @@ pub trait MixerTrait {
 
 #[cfg(test)]
 pub(crate) mod tests {
+
+    use log::debug;
 
     use crate::mixer::{
         AsyncMixerInputEnd, AsyncMixerOutputEnd, MixerTrackSelector, SyncMixerInputEnd,
@@ -676,7 +677,8 @@ pub(crate) mod tests {
             &input,
             input_data.as_slice(),
             MixerTrackSelector::Stereo(0, 1),
-        );
+        )
+        .unwrap();
 
         // stereo data is twice as long because its two channels
         let mut output_buffer = vec![0.0f32; bufsize * 2];
@@ -692,18 +694,10 @@ pub(crate) mod tests {
         //for simplicity. Means we get 4 channels with each their specified
         //buffer size
         let what_we_want_to_produce = vec![
-            1.0, 2.0, 0.0, 0.0,
-            1.0, 2.0, 0.0, 0.0,
-            1.0, 2.0, 0.0, 0.0,
-            1.0, 2.0, 0.0, 0.0,
+            1.0, 2.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0,
         ];
 
-        let input_data = vec![
-            1.0, 2.0,
-            1.0, 2.0,
-            1.0, 2.0,
-            1.0, 2.0,
-        ];
+        let input_data = vec![1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0];
 
         let bufsize = 4;
         let chcount = 4;
@@ -715,12 +709,39 @@ pub(crate) mod tests {
             &input,
             input_data.as_slice(),
             MixerTrackSelector::Stereo(0, 1),
-        );
+        )
+        .unwrap();
 
         // stereo data is twice as long because its two channels
         let mut output_buffer = vec![0.0f32; bufsize * chcount];
         read_from_mixer_sync(&output, &mut output_buffer).unwrap();
 
         assert_eq!(what_we_want_to_produce, output_buffer);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_channel_overflow() {
+        let bufsize = 4;
+        let chcount = 2;
+        let (output, input) = sync_debug_mixer(chcount, bufsize, 44100);
+
+        let b = vec![1.0];
+        //let input_data = stereo_test_data(bufsize * chcount);
+        let (consumed, dropped) =
+            write_to_mixer_sync(&input, b.as_slice(), MixerTrackSelector::Mono(2)).unwrap();
+
+        println!("c {}, d {}", consumed, dropped);
+    }
+
+    #[test]
+    fn test_underflow() {
+        let mut output_buffer = vec![0f32; 1024];
+        let (output, input) = sync_debug_mixer(2, 1024, 44100);
+
+        let (consumed, dropped) = read_from_mixer_sync(&output, output_buffer.as_mut_slice()).unwrap();
+
+        // check that all of the samples were dropped
+        assert_eq!(dropped, output_buffer.len());
     }
 }

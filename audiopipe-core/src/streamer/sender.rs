@@ -142,9 +142,9 @@ pub(crate) mod tests {
             _handle: tokio::spawn(async move {
                 log::debug!("dummy connection to {}", addr);
                 assert!(true);
-                loop {
-                    tokio::time::sleep(Duration::from_millis(10000)).await;
-                }
+                //loop {
+                    //tokio::time::sleep(Duration::from_millis(10000)).await;
+                //}
                 Ok(())
             }),
             channel: s,
