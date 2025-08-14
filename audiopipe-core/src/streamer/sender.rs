@@ -13,7 +13,9 @@ use tokio::{
 use uuid::Uuid;
 
 use crate::{
-    audio::GLOBAL_MASTER_INPUT_MIXER, mixer::{read_from_mixer_async, MixerTrackSelector}, streamer::packet::{AudioPacket, AudioPacketHeader}
+    audio::GLOBAL_MASTER_INPUT_MIXER,
+    mixer::{MixerTrackSelector, read_from_mixer_async},
+    streamer::packet::{AudioPacket, AudioPacketHeader},
 };
 
 pub enum UdpClientCommands {
@@ -35,7 +37,7 @@ impl AudioSenderHandle {
         connection_id: Uuid,
         bufsize: usize,
         sample_rate: usize,
-        track_selector: MixerTrackSelector
+        track_selector: MixerTrackSelector,
     ) -> AudioSenderHandle {
         let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
 
@@ -47,7 +49,14 @@ impl AudioSenderHandle {
         //info!("Starting UDP Sender");
         AudioSenderHandle {
             //_handle: Box::pin(udp_client(sock, bufsize * chcount as u32, r)),
-            _handle: tokio::spawn(udp_client(sock, r, bufsize, sample_rate, connection_id, track_selector)),
+            _handle: tokio::spawn(udp_client(
+                sock,
+                r,
+                bufsize,
+                sample_rate,
+                connection_id,
+                track_selector,
+            )),
             channel: s,
             connection_id,
         }
@@ -64,7 +73,7 @@ pub async fn udp_client(
     bufsize: usize, //    track: MixerTrack<AsyncRawMixerTrack<Output>>,
     sample_rate: usize,
     connection_id: Uuid,
-    sel: MixerTrackSelector
+    sel: MixerTrackSelector,
 ) -> io::Result<()> {
     info!("Starting UDP Sender");
 
@@ -80,14 +89,14 @@ pub async fn udp_client(
         let input = GLOBAL_MASTER_INPUT_MIXER.lock().await;
 
         let input = input.as_ref().expect("failed to open mixer");
-        
+
         tokio::select! {
             Some(cmd) = ch.recv() => {
                 match cmd {
                     UdpClientCommands::Stop => break,
                 }
             },
-            
+
             // fixed-interval push
             _ = tokio::time::sleep(Duration::from_millis(ms as u64)) => {
                 //TODO add input channel selector
@@ -143,12 +152,30 @@ pub(crate) mod tests {
                 log::debug!("dummy connection to {}", addr);
                 assert!(true);
                 //loop {
-                    //tokio::time::sleep(Duration::from_millis(10000)).await;
+                //tokio::time::sleep(Duration::from_millis(10000)).await;
                 //}
                 Ok(())
             }),
             channel: s,
             connection_id,
         }
+    }
+
+    #[tokio::test]
+    async fn test_audio_sender_stop() {
+        let addr: SocketAddr = "127.0.0.1:4000".parse().unwrap();
+        let connection_id = Uuid::new_v4();
+
+        let sender = AudioSenderHandle::new(
+            addr,
+            connection_id,
+            256,
+            44100,
+            MixerTrackSelector::Mono(0),
+        )
+        .await;
+
+        let res = sender.stop().await;
+        assert!(res.is_ok());
     }
 }

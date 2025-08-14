@@ -25,10 +25,10 @@ type SharedAudioReceiverHandle = Arc<Mutex<HashMap<uuid::Uuid, AudioReceiverHand
 use crate::{
     audio::GLOBAL_MASTER_OUTPUT_MIXER,
     control::packet::{
-        ControlError, ControlRequest, ControlResponse, PacketError, read_packet, send_packet,
+        read_packet, send_packet, ControlError, ControlRequest, ControlResponse, PacketError
     },
     mixer::{MixerTrackSelector, MixerTrait},
-    streamer::receiver::AudioReceiverHandle,
+    streamer::receiver::{AudioReceiverHandle, UdpServerHandleError},
 };
 
 enum TcpServerCommands {
@@ -47,7 +47,7 @@ pub enum TcpServerHandlerErrors {
     //SocketError(io::Error),
     HandlerPacketError(PacketError),
     SerdeError(serde_json::Error),
-    AudioStreamError(Error),
+    AudioStreamError(UdpServerHandleError),
     StreamClosed(Option<Uuid>),
 }
 
@@ -66,7 +66,7 @@ impl TcpServer {
     pub fn new<F, Fut>(target_node_addr: String, on_success: F) -> Self
     where
         F: Fn(MixerTrackSelector) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = io::Result<AudioReceiverHandle>> + Send + 'static,
+        Fut: Future<Output = Result<AudioReceiverHandle, UdpServerHandleError>> + Send + 'static,
     {
         let (s, r) = mpsc::unbounded_channel();
         let mut server = Self::create(target_node_addr, r, on_success);
@@ -80,7 +80,7 @@ impl TcpServer {
     ) -> Self
     where
         F: Fn(MixerTrackSelector) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = io::Result<AudioReceiverHandle>> + Send + 'static,
+        Fut: Future<Output = Result<AudioReceiverHandle, UdpServerHandleError>> + Send + 'static,
     {
         // holds all open udp audio streams
         let handles = Arc::new(Mutex::new(HashMap::new()));
@@ -123,7 +123,7 @@ impl Future for TcpServer {
         let task = self.get_mut();
 
         match Pin::new(&mut task._task).poll(cx) {
-            Poll::Ready(Ok(res)) => Poll::Ready(Ok(())),
+            Poll::Ready(Ok(res)) => Poll::Ready(Ok(res)),
             Poll::Ready(Err(res)) => Poll::Ready(Err(TcpServerErrors::JoinError(res))),
             Poll::Pending => Poll::Pending,
         }
@@ -142,7 +142,7 @@ async fn server_event_loop<F, Fut>(
 ) -> Result<(), TcpServerErrors>
 where
     F: Fn(MixerTrackSelector) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = io::Result<AudioReceiverHandle>> + Send + 'static,
+    Fut: Future<Output = Result<AudioReceiverHandle, UdpServerHandleError>> + Send + 'static,
 {
     /*let ip: Ipv4Addr = sock_addr.parse().expect("parse failed");
     let target = SocketAddr::new(std::net::IpAddr::V4(ip), 6789);
@@ -219,7 +219,7 @@ async fn handle_connection<F, Fut>(
 ) -> Result<(), TcpServerHandlerErrors>
 where
     F: Fn(MixerTrackSelector) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = io::Result<AudioReceiverHandle>> + Send + 'static,
+    Fut: Future<Output = Result<AudioReceiverHandle, UdpServerHandleError>> + Send + 'static,
 {
     let mut packet_buffer = vec![0; 8196];
     //let handles = child_handles.lock().await;
