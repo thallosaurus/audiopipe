@@ -3,7 +3,8 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use log::info;
+use bytemuck::PodCastError;
+use log::{error, info};
 use tokio::{
     io,
     net::UdpSocket,
@@ -14,12 +15,21 @@ use uuid::Uuid;
 
 use crate::{
     audio::GLOBAL_MASTER_INPUT_MIXER,
-    mixer::{MixerTrackSelector, read_from_mixer_async},
+    mixer::{
+        MixerError, MixerTrackSelector, MixerTrait, read_from_mixer_async,
+        read_from_mixer_track_async,
+    },
     streamer::packet::{AudioPacket, AudioPacketHeader},
 };
 
 pub enum UdpClientCommands {
     Stop,
+}
+
+#[derive(Debug)]
+pub enum UdpClientError {
+    MixerError(MixerError),
+    CastError(PodCastError)
 }
 
 pub struct AudioSenderHandle {
@@ -49,14 +59,17 @@ impl AudioSenderHandle {
         //info!("Starting UDP Sender");
         AudioSenderHandle {
             //_handle: Box::pin(udp_client(sock, bufsize * chcount as u32, r)),
-            _handle: tokio::spawn(udp_client(
-                sock,
-                r,
-                bufsize,
-                sample_rate,
-                connection_id,
-                track_selector,
-            )),
+            _handle: tokio::spawn(async move {
+                match udp_client(sock, r, bufsize, sample_rate, connection_id, track_selector).await {
+                    Ok(_) => {
+                        return Ok(())
+                    },
+                    Err(e) => {
+                        error!("encountered error: {:?}", e);
+                    },
+                }
+                Ok(())
+            }),
             channel: s,
             connection_id,
         }
@@ -74,11 +87,11 @@ pub async fn udp_client(
     sample_rate: usize,
     connection_id: Uuid,
     sel: MixerTrackSelector,
-) -> io::Result<()> {
+) -> Result<(), UdpClientError> {
     info!("Starting UDP Sender");
 
     // set udp network buffer to the buffersize determined by the server
-    let mut buf: Vec<f32> = vec![0.0f32; bufsize];
+    let mut buf: Vec<f32> = vec![0.0f32; bufsize * sel.channel_count()];
 
     let ms = (bufsize as f64 / sample_rate as f64) * 1000.0;
 
@@ -90,34 +103,28 @@ pub async fn udp_client(
 
         let input = input.as_ref().expect("failed to open mixer");
 
-        tokio::select! {
-            Some(cmd) = ch.recv() => {
-                match cmd {
-                    UdpClientCommands::Stop => break,
-                }
+        tokio::time::sleep(Duration::from_millis(ms as u64)).await;
+        //let (consumed, dropped) = read_from_mixer_async(input, &mut buf).await.unwrap();
+
+        let channels = input
+            .get_channel(sel)
+            .map_err(|e| UdpClientError::MixerError(e))?;
+        read_from_mixer_track_async(&channels, &mut buf).await;
+
+        let payload: &[u8] = bytemuck::try_cast_slice(&buf).map_err(|e|UdpClientError::CastError(e))?;
+
+        let packet = AudioPacket {
+            header: AudioPacketHeader {
+                connection_id,
+                timestamp: SystemTime::now(),
+                sample_rate,
+                channels: sel.channel_count(),
             },
+            payload: Vec::from(payload),
+        };
 
-            // fixed-interval push
-            _ = tokio::time::sleep(Duration::from_millis(ms as u64)) => {
-                //TODO add input channel selector
-                let (consumed, dropped) = read_from_mixer_async(input, &mut buf).await.unwrap();
-
-                let payload: &[u8] = bytemuck::try_cast_slice(&buf).unwrap();
-
-                let packet = AudioPacket {
-                    header: AudioPacketHeader {
-                        connection_id,
-                        timestamp: SystemTime::now(),
-                        sample_rate,
-                        channels: sel.channel_count()
-                    },
-                    payload: Vec::from(payload)
-                };
-
-                let data = bincode2::serialize(&packet).expect("error while serializing audio data");
-                sock.send(&data).await.unwrap();
-            }
-        }
+        let data = bincode2::serialize(&packet).expect("error while serializing audio data");
+        sock.send(&data).await.unwrap();
     }
 
     Ok(())
@@ -166,14 +173,9 @@ pub(crate) mod tests {
         let addr: SocketAddr = "127.0.0.1:4000".parse().unwrap();
         let connection_id = Uuid::new_v4();
 
-        let sender = AudioSenderHandle::new(
-            addr,
-            connection_id,
-            256,
-            44100,
-            MixerTrackSelector::Mono(0),
-        )
-        .await;
+        let sender =
+            AudioSenderHandle::new(addr, connection_id, 256, 44100, MixerTrackSelector::Mono(0))
+                .await;
 
         let res = sender.stop().await;
         assert!(res.is_ok());

@@ -285,6 +285,54 @@ pub enum MixerTrack<T> {
     Stereo(T, T),
 }
 
+impl<T> MixerTrack<T> {
+    pub fn channel_count(&self) -> usize {
+        match self {
+            MixerTrack::Mono(_) => 1,
+            MixerTrack::Stereo(_, _) => 2,
+        }
+    }
+}
+
+pub async fn read_from_mixer_track_async(
+    mt: &MixerTrack<AsyncRawMixerTrack<Output>>,
+    output_buffer: &mut [f32],
+) -> (usize, usize) {
+
+    let mut consumed = 0;
+    let mut dropped = 0;
+    match mt {
+        MixerTrack::Mono(c) => {
+            for o in output_buffer.iter_mut() {
+                if let Some(v) = c.lock().await.try_pop() {
+                    *o = v;
+                    consumed += 1;
+                } else {
+                    *o = Sample::EQUILIBRIUM;
+                    dropped += 1;
+                }
+            }
+        }
+        MixerTrack::Stereo(l, r) => {
+            let mut ch = 0;
+            for o in output_buffer.iter_mut() {
+                let c = if ch & 1 == 0 { l.clone() } else { r.clone() };
+
+                if let Some(v) = c.lock().await.try_pop() {
+                    *o = v;
+                    consumed += 1;
+                } else {
+                    *o = Sample::EQUILIBRIUM;
+                    dropped += 1;
+                }
+
+                ch = (ch + 1) % mt.channel_count();
+            }
+        }
+    }
+    (consumed, dropped)
+}
+
 /// Syncronously empties the whole mixer and writes it to the output_buffer
 pub fn read_from_mixer_sync<M>(
     mixer: &M,
@@ -564,7 +612,9 @@ pub(crate) mod tests {
     use ringbuf::traits::Consumer;
 
     use crate::mixer::{
-        custom_mixer, read_from_mixer_async, read_from_mixer_sync, write_to_mixer_async, write_to_mixer_sync, AsyncMixerInputEnd, AsyncMixerOutputEnd, MixerTrackSelector, MixerTrait, SyncMixerInputEnd, SyncMixerOutputEnd
+        AsyncMixerInputEnd, AsyncMixerOutputEnd, MixerTrackSelector, MixerTrait, SyncMixerInputEnd,
+        SyncMixerOutputEnd, custom_mixer, read_from_mixer_async, read_from_mixer_sync,
+        write_to_mixer_async, write_to_mixer_sync,
     };
 
     type DebugMixer = (AsyncMixerOutputEnd, AsyncMixerInputEnd);
@@ -749,48 +799,52 @@ pub(crate) mod tests {
     #[test]
     fn test_write_to_mixer_sync() {
         let data_to_be_written = vec![
-            1.0f32, 1.0f32, 
-            2.0f32, 2.0f32,
-            3.0f32, 3.0f32,
-            4.0f32, 4.0f32
+            1.0f32, 1.0f32, 2.0f32, 2.0f32, 3.0f32, 3.0f32, 4.0f32, 4.0f32,
         ];
 
         let (output, input) = sync_debug_mixer(2, 4, 44100);
 
-        let (consumed, dropped) = write_to_mixer_sync(&input, &data_to_be_written, MixerTrackSelector::Stereo(0, 1)).unwrap();
+        let (consumed, dropped) = write_to_mixer_sync(
+            &input,
+            &data_to_be_written,
+            MixerTrackSelector::Stereo(0, 1),
+        )
+        .unwrap();
         assert_eq!(consumed, 8);
         assert_eq!(dropped, 0);
-        
+
         //let mut out_buf = vec![0f32;4];
         //let (consumed, dropped) = read_from_mixer_sync(&output, &mut out_buf).unwrap();
         let data_raw = output.get_raw_channel(0).unwrap();
         let mut data = data_raw.lock().unwrap();
 
-        let data: Vec<f32> = data.iter_mut().map(|e|*e).collect();
+        let data: Vec<f32> = data.iter_mut().map(|e| *e).collect();
         assert_eq!(data, vec![1.0f32, 2.0f32, 3.0f32, 4.0f32]);
     }
 
     #[tokio::test]
     async fn test_write_to_mixer_async() {
         let data_to_be_written = vec![
-            1.0f32, 1.0f32, 
-            2.0f32, 2.0f32,
-            3.0f32, 3.0f32,
-            4.0f32, 4.0f32
+            1.0f32, 1.0f32, 2.0f32, 2.0f32, 3.0f32, 3.0f32, 4.0f32, 4.0f32,
         ];
 
         let (output, input) = debug_mixer(2, 4, 44100);
 
-        let (consumed, dropped) = write_to_mixer_async(&input, &data_to_be_written, MixerTrackSelector::Stereo(0, 1)).await;
+        let (consumed, dropped) = write_to_mixer_async(
+            &input,
+            &data_to_be_written,
+            MixerTrackSelector::Stereo(0, 1),
+        )
+        .await;
         assert_eq!(consumed, 8);
         assert_eq!(dropped, 0);
-        
+
         //let mut out_buf = vec![0f32;4];
         //let (consumed, dropped) = read_from_mixer_sync(&output, &mut out_buf).unwrap();
         let data_raw = output.get_raw_channel(0).unwrap();
         let mut data = data_raw.lock().await;
 
-        let data: Vec<f32> = data.iter_mut().map(|e|*e).collect();
+        let data: Vec<f32> = data.iter_mut().map(|e| *e).collect();
         assert_eq!(data, vec![1.0f32, 2.0f32, 3.0f32, 4.0f32]);
     }
 }

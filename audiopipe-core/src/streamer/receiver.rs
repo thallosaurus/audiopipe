@@ -59,9 +59,13 @@ impl AudioReceiverHandle {
         //ch: &AsyncMixerInputEnd,
         sel: MixerTrackSelector,
     ) -> Result<AudioReceiverHandle, UdpServerHandleError> {
-        let sock = UdpSocket::bind("0.0.0.0:0").await.map_err(|e|UdpServerHandleError::TokioError(e.to_string()))?;
+        let sock = UdpSocket::bind("0.0.0.0:0")
+            .await
+            .map_err(|e| UdpServerHandleError::TokioError(e.to_string()))?;
         //.map_err(|e| UdpServerHandleError::TokioError(e.to_string()))?;
-        let local_addr = sock.local_addr().map_err(|e|UdpServerHandleError::TokioError(e.to_string()))?;
+        let local_addr = sock
+            .local_addr()
+            .map_err(|e| UdpServerHandleError::TokioError(e.to_string()))?;
         //.map_err(|e| UdpServerHandleError::TokioError(e.to_string()))?;
         info!("local udp addr: {}", local_addr);
 
@@ -70,17 +74,17 @@ impl AudioReceiverHandle {
             //_handle: Arc::new(Mutex::new(Box::pin(udp_server(sock, r, ch)))), //info!("UDP Server Listening");
             _handle: tokio::spawn(async move {
                 tokio::select! {
-                Some(cmd) = r.recv() => {
-                    match cmd {
-                        UdpServerCommands::Stop => return Ok(()),
-                    }
-                },
+                    Some(cmd) = r.recv() => {
+                        match cmd {
+                            UdpServerCommands::Stop => return Ok(()),
+                        }
+                    },
 
-                // run the udp receiver loop
-                res = udp_receiver_event_loop(sock, sel) => {
-                    return res
+                    // run the udp receiver loop
+                    res = udp_receiver_event_loop(sock, sel) => {
+                        return res
+                    }
                 }
-            }
             }),
             channel: s,
             local_addr,
@@ -99,7 +103,9 @@ impl Future for AudioReceiverHandle {
 
         match Pin::new(&mut task._handle).poll(cx) {
             Poll::Ready(Ok(res)) => Poll::Ready(Ok(())),
-            Poll::Ready(Err(res)) => Poll::Ready(Err(UdpServerHandleError::TokioError(res.to_string()))),
+            Poll::Ready(Err(res)) => {
+                Poll::Ready(Err(UdpServerHandleError::TokioError(res.to_string())))
+            }
             Poll::Pending => Poll::Pending,
         }
     }
@@ -122,55 +128,53 @@ async fn handle_datagram(len: usize, mut buf: Box<[u8]>) -> ReceiverResult<Audio
 
 async fn udp_receiver_event_loop(
     sock: UdpSocket,
-    stream_track_selector: MixerTrackSelector,
+    output_channel_selector: MixerTrackSelector,
 ) -> Result<(), UdpServerHandleError> {
     info!("Starting UDP Receiver");
     // start connection
 
+    let buf = vec![0; 10000 as usize].into_boxed_slice();
     loop {
-        let mut buf = vec![0; 10000 as usize].into_boxed_slice();
+        let mut buf = buf.clone();
         //tokio::select! {
-            let result = sock.recv_from(&mut buf).await;
-                match result {
-                    Ok((len, addr)) => {
-                        //info!("Received {:?} bytes from {:?}, Payload: {:?}", len, addr, data);
+        let result = sock.recv_from(&mut buf).await;
+        match result {
+            Ok((len, addr)) => {
+                //info!("Received {:?} bytes from {:?}, Payload: {:?}", len, addr, data);
 
-                        match handle_datagram(len, buf).await {
-                            Ok(packet) => {
+                let packet = handle_datagram(len, buf).await?;
 
-                                trace!("UDP Packet Length: {:?}", len);
-                                trace!("Received Packet from {}, Length: {}, {:?}", addr, len, packet);
+                trace!("UDP Packet Length: {:?}", len);
+                trace!(
+                    "Received Packet from {}, Length: {}, {:?}",
+                    addr, len, packet
+                );
 
-                                // whatever
-                                let mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await;
-                                let mixer = mixer.as_ref().expect("failed to open mixer");
+                // whatever
+                let mixer = GLOBAL_MASTER_OUTPUT_MIXER.lock().await;
+                let mixer = mixer.as_ref().expect("failed to open mixer");
 
-                                let data: &[f32] = bytemuck::try_cast_slice(&packet.payload).unwrap();
+                let data: &[f32] = bytemuck::try_cast_slice(&packet.payload).unwrap();
 
-                                //.map_err(|e| UdpError::DeserializeError(e)).unwrap();
+                //.map_err(|e| UdpError::DeserializeError(e)).unwrap();
 
+                
+                let (consumed, dropped) = write_to_mixer_async(mixer, data, output_channel_selector).await;
+                assert_eq!(consumed, data.len());
+                assert_eq!(dropped, 0);
 
-                                write_to_mixer_async(mixer, data, stream_track_selector).await;
-                            },
-                            Err(e) => {
+                // TODO Get Output Channel for server
+                //insert_audio_samples(packet, &raw_ch).await;
 
-                            }
-                        }
-
-                        // TODO Get Output Channel for server
-                        //insert_audio_samples(packet, &raw_ch).await;
-
-                        // decode packet
-                        //info!("{:?}", String::from_utf8(data.to_vec()));
-                    },
-                    Err(e) => {
-                        error!("recv error: {:?}", e);
-                    }
-                }
-
+                // decode packet
+                //info!("{:?}", String::from_utf8(data.to_vec()));
             }
-        //};
-    
+            Err(e) => {
+                error!("recv error: {:?}", e);
+            }
+        }
+    }
+    //};
 
     Ok(())
 }
@@ -182,7 +186,10 @@ pub(crate) mod tests {
     use log::debug;
     use tokio::{io, sync::mpsc};
 
-    use crate::{mixer::MixerTrackSelector, streamer::receiver::{AudioReceiverHandle, UdpServerHandleError}};
+    use crate::{
+        mixer::MixerTrackSelector,
+        streamer::receiver::{AudioReceiverHandle, UdpServerHandleError},
+    };
 
     pub async fn dummy_receiver(
         _: MixerTrackSelector,
