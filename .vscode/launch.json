@@ -26,6 +26,32 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Debug Server",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=uastreamer",
+                    "--package=uastreamer"
+                ],
+                "filter": {
+                    "name": "uastreamer",
+                    "kind": "bin"
+                }
+            },
+            "env": {
+                "RUST_LOG": "debug"
+            },
+            "args": [
+                "-d",
+                "BlackHole 64ch",
+                "-b=1024",
+                "receiver"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug executable 'receiver'",
             "cargo": {
                 "args": [

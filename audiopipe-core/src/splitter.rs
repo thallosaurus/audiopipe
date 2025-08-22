@@ -7,6 +7,8 @@ use ringbuf::{
     traits::Consumer,
 };
 
+use crate::mixer::MixerTrackSelector;
+
 #[derive(Debug)]
 pub enum SplitterMergerError {
     SelectedChannelsOverChannelCount,
@@ -99,7 +101,8 @@ impl<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> Iterator
 /// It basically is the reverse of [ChannelSplitter]
 pub struct ChannelMerger<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> {
     data: &'a mut HeapCons<T>,
-    selected_channels: Vec<usize>,
+    //selected_channels: Vec<usize>,
+    selected_channels: MixerTrackSelector,
     channel_count: ChannelCount,
     index: usize,
     output_length: usize,
@@ -108,15 +111,16 @@ pub struct ChannelMerger<'a, T: cpal::SizedSample + Send + Pod + Default + Debug
 impl<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> ChannelMerger<'a, T> {
     pub fn new(
         data: &'a mut HeapCons<T>,
-        selected_channels: &Vec<usize>,
+        //selected_channels: &Vec<usize>,
+        selected_channels: MixerTrackSelector,
         channel_count: ChannelCount,
         output_length: usize,
     ) -> Result<Self, SplitterMergerError> {
         let mut selection = selected_channels.clone();
-        selection.dedup();
+        //selection.dedup();
 
         //assert!(selection.len() < channel_count.into());
-        if selection.len() > channel_count.into() {
+        if selection.channel_count() > channel_count.into() {
             Err(SplitterMergerError::SelectedChannelsOverChannelCount)
         } else {
             Ok(ChannelMerger {
@@ -140,7 +144,7 @@ impl<'a, T: cpal::SizedSample + Send + Pod + Default + Debug + 'static> Iterator
 
         if self.index < self.output_length {
             self.index += 1;
-            if self.selected_channels.contains(&current_channel) {
+            if self.selected_channels.contains(current_channel) {
                 self.data.try_pop()
             } else {
                 Some(cpal::Sample::EQUILIBRIUM)
@@ -205,7 +209,7 @@ mod tests {
             prod.try_push(*d).unwrap();
         }
 
-        let merger = ChannelMerger::new(&mut cons, &vec![1, 3], 4, output_data.len()).unwrap();
+        let merger = ChannelMerger::new(&mut cons, MixerTrackSelector::Stereo(1, 3), 4, output_data.len()).unwrap();
 
         let v: Vec<i32> = merger.into_iter().map(|e| e).collect();
         println!("{:?}", v);

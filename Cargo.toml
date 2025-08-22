@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "uastreamer", 
+    "audiopipe-bin",
+    "audiopipe-core",
     #"test-app/src-tauri"
 ]
