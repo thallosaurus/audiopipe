@@ -1,4 +1,4 @@
 #!/bin/sh
 DATE=$(date +"%Y-%m-%dT%H:%M:%S")
 mkdir -p logs
-RUST_BACKTRACE=full cargo run --bin receiver -- -vvv -d "MacBook Pro Speakers" -c 0 -c 1  2>&1 | tee logs/receiver.$DATE.log
+RUST_BACKTRACE=full RUST_LOG=debug cargo run --bin audiopipe -- -d "MacBook Pro Speakers" -t 0,1 receiver 2>&1 | tee logs/receiver.$DATE.log
