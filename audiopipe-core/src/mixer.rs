@@ -280,6 +280,7 @@ impl MixerTrait for SyncMixerOutputEnd {
     }
 }
 
+/// Represents either a mono track or a stereo mixer track pair
 pub enum MixerTrack<T> {
     Mono(T),
     Stereo(T, T),
@@ -372,9 +373,6 @@ pub async fn read_from_mixer_async<M>(
 where
     M: MixerTrait<Inner = AsyncRawMixerTrack<Output>>,
 {
-    let mut consumed = 0;
-    let mut dropped = 0;
-
     /*if let Ok(mixer) = mixer.get_channel(sel) {
         match mixer {
             MixerTrack::Mono(c) => {
