@@ -16,6 +16,12 @@ pub enum MixerTrackSelector {
     Stereo(usize, usize),
 }
 
+impl Default for MixerTrackSelector {
+    fn default() -> Self {
+        Self::Stereo(0, 1)
+    }
+}
+
 impl MixerTrackSelector {
     pub fn channel_count(&self) -> usize {
         match self {

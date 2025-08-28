@@ -49,7 +49,7 @@ pub type ReceiverResult<T> = Result<T, UdpServerHandleError>;
 /// as a callback on the server for the default behavior
 pub struct AudioReceiverHandle {
     //_handle: UdpServerHandleFuture,
-    _handle: JoinHandle<Result<(), UdpServerHandleError>>,
+    //_handle: JoinHandle<Result<(), UdpServerHandleError>>,
     channel: mpsc::Sender<UdpServerCommands>,
     pub local_addr: SocketAddr,
 }
@@ -77,28 +77,30 @@ impl AudioReceiverHandle {
         info!("local udp addr: {}", local_addr);
 
         let (s, mut r) = mpsc::channel(1);
-        Ok(AudioReceiverHandle {
-            // Spawns the new connection task here
-            _handle: tokio::spawn(async move {
-                tokio::select! {
-                    Some(cmd) = r.recv() => {
-                        match cmd {
-                            UdpServerCommands::Stop => return Ok(()),
-                        }
-                    },
-
-                    // run the udp receiver loop
-                    res = udp_receiver_event_loop(sock, sel) => {
-                        return res
+        // Spawns the new connection task here
+        //_handle:
+        tokio::spawn(async move {
+            tokio::select! {
+                Some(cmd) = r.recv() => {
+                    match cmd {
+                        UdpServerCommands::Stop => return Ok(()),
                     }
+                },
+                
+                // run the udp receiver loop
+                res = udp_receiver_event_loop(sock, sel) => {
+                    return res
                 }
-            }),
+            }
+        });
+
+        Ok(AudioReceiverHandle {
             channel: s,
             local_addr,
         })
     }
 }
-
+/*/
 impl Future for AudioReceiverHandle {
     type Output = Result<(), UdpServerHandleError>;
 
@@ -117,6 +119,7 @@ impl Future for AudioReceiverHandle {
         }
     }
 }
+*/
 
 async fn handle_datagram(len: usize, mut buf: Box<[u8]>) -> ReceiverResult<AudioPacket> {
     // whatever
@@ -206,11 +209,12 @@ pub(crate) mod tests {
         let local_addr: SocketAddr = "0.0.0.0:12345".parse().unwrap();
         debug!("dummy server addr: {}", local_addr);
         let (s, r) = mpsc::channel(1);
+        tokio::spawn(async move {
+            assert!(true);
+            //Ok(())
+        });
+
         Ok(AudioReceiverHandle {
-            _handle: tokio::spawn(async move {
-                assert!(true);
-                Ok(())
-            }),
             channel: s,
             local_addr,
         })

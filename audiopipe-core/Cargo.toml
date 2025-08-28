@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.98"
+axum = "0.8.4"
 bincode2 = "2.0.1"
 bytemuck = "1.22.0"
 cpal = "0.15.3"
