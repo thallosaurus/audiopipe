@@ -111,6 +111,11 @@ impl TcpServer {
             handles,
         }
     }
+    fn stop(&self) -> Result<(), TcpServerErrors> {
+        let ch = self.channel.clone().unwrap();
+        ch.send(TcpServerCommands::Stop).expect("couldn't stop tcp server");
+        Ok(())
+    }
 }
 
 impl Future for TcpServer {
@@ -130,6 +135,12 @@ impl Future for TcpServer {
     }
 }
 
+impl Drop for TcpServer {
+    fn drop(&mut self) {
+        self.stop().unwrap();
+    }
+}
+
 //pub async fn new_control_server(sock_addr: String) -> io::Result<()> {}
 
 /// The entry point to the tcp communication server
@@ -144,13 +155,6 @@ where
     F: Fn(MixerTrackSelector) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<AudioReceiverHandle, UdpServerHandleError>> + Send + 'static,
 {
-    /*let ip: Ipv4Addr = sock_addr.parse().expect("parse failed");
-    let target = SocketAddr::new(std::net::IpAddr::V4(ip), 6789);
-    let listen = TcpListener::bind(target)
-        .await
-        .map_err(|e| TcpServerErrors::SocketError(e))?;*/
-
-    //let rc = Arc::new(Mutex::new(r));
     let callback = Arc::new(on_success);
     let ch = Arc::new(Mutex::new(channel));
 

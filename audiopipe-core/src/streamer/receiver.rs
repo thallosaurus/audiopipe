@@ -42,6 +42,11 @@ impl Display for UdpServerHandleError {
 
 pub type ReceiverResult<T> = Result<T, UdpServerHandleError>;
 
+/// The Handle which processes Input from the UDP Socket
+/// 
+/// The [crate::TcpServer] is responsible for calling the desired
+/// routine that should be called on a new connection. Use [AudioReceiverHandle::new]
+/// as a callback on the server for the default behavior
 pub struct AudioReceiverHandle {
     //_handle: UdpServerHandleFuture,
     _handle: JoinHandle<Result<(), UdpServerHandleError>>,
@@ -55,6 +60,8 @@ impl AudioReceiverHandle {
     }
 
     /// Creates a new Audio Receiver Handle
+    /// 
+    /// sel is the Mixer Track that tells us where we 
     pub async fn new(
         //ch: &AsyncMixerInputEnd,
         sel: MixerTrackSelector,
@@ -71,7 +78,7 @@ impl AudioReceiverHandle {
 
         let (s, mut r) = mpsc::channel(1);
         Ok(AudioReceiverHandle {
-            //_handle: Arc::new(Mutex::new(Box::pin(udp_server(sock, r, ch)))), //info!("UDP Server Listening");
+            // Spawns the new connection task here
             _handle: tokio::spawn(async move {
                 tokio::select! {
                     Some(cmd) = r.recv() => {
@@ -158,8 +165,8 @@ async fn udp_receiver_event_loop(
 
                 //.map_err(|e| UdpError::DeserializeError(e)).unwrap();
 
-                
-                let (consumed, dropped) = write_to_mixer_async(mixer, data, output_channel_selector).await;
+                let (consumed, dropped) =
+                    write_to_mixer_async(mixer, data, output_channel_selector).await;
                 assert_eq!(consumed, data.len());
                 assert_eq!(dropped, 0);
 

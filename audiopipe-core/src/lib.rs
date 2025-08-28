@@ -73,6 +73,7 @@ pub async fn init_sender(
     TcpClient::new(target, master_track_selector, AudioSenderHandle::new)
 }
 
+/// Inits a receiver that is suitable for cli usage
 pub async fn init_receiver(
     audio_host: Option<String>,
     device_name: Option<String>,

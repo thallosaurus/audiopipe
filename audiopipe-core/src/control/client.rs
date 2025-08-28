@@ -69,6 +69,8 @@ impl TcpClient {
         let h = Arc::clone(&handle);
 
         Self {
+
+            // A new Tcp Connection has been made, handle it here
             _task: tokio::spawn(async move {
                 let h = Arc::clone(&h);
                 //let c = Arc::clone(&channel);
