@@ -1,4 +1,6 @@
 
+use std::collections::HashMap;
+
 use cpal::{traits::*, *};
 
 //use config::{StreamerConfig, get_cpal_config};
@@ -193,6 +195,39 @@ fn setup_cpal_input(
     );
 
     (input_device, sconfig)
+}
+
+struct DeviceEnumeration {
+    available_hosts: Vec<HostId>,
+    input_devices: HashMap<String, DeviceEnumerationInputConfig>,
+    output_devices: Vec<String>,
+}
+
+struct DeviceEnumerationInputConfig {
+//buffer_size: 
+}
+
+/// Get a struct with all available audio devices and options
+pub fn enumerate_devices_object() {
+    let host = cpal::default_host();
+    
+    //let input_devices = HashMap::new();
+    for d in host.input_devices().unwrap() {
+        println!("{}", d.name().unwrap());
+        let configs = d.supported_input_configs().unwrap();
+
+        
+        for c in configs {
+            let bsize = c.buffer_size();
+
+            /*input_devices.insert(d.name(), DeviceEnumerationInputConfig {
+
+            });*/
+        }
+
+    }
+    
+    //DeviceEnumeration { available_hosts: cpal::available_hosts(), input_devices: input_devices, output_devices: () }
 }
 
 pub fn enumerate_devices(audio_host: Option<String>, device_name: Option<String>) {
