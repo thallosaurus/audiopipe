@@ -1,10 +1,30 @@
+<script setup lang="ts">
+import { ref } from "vue";
+import { invoke } from "@tauri-apps/api/core";
+
+const greetMsg = ref("");
+const name = ref("");
+
+
+</script>
+
+<template>
+  <main class="container">
+    
+  </main>
+</template>
+
+<style scoped>
 .logo.vite:hover {
   filter: drop-shadow(0 0 2em #747bff);
 }
 
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafb);
+.logo.vue:hover {
+  filter: drop-shadow(0 0 2em #249b73);
 }
+
+</style>
+<style>
 :root {
   font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
   font-size: 16px;
@@ -114,3 +134,5 @@ button {
     background-color: #0f0f0f69;
   }
 }
+
+</style>

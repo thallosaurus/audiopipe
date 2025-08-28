@@ -41,12 +41,12 @@ mod tests {
 
         
         // start the server in the background
-        tokio::spawn(async move {
+        /*tokio::spawn(async move {
             if let Err(e) = server.await {
                 error!("server crashed: {:?}", e);
                 assert!(false);
             }
-        });
+        });*/
         
         let (s, r) = unbounded_channel();
         let (s_output, _) = default_client_mixer(2, 1024, 44100);

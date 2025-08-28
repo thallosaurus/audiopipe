@@ -3,5 +3,5 @@ resolver = "2"
 members = [
     "audiopipe-bin",
     "audiopipe-core",
-    "test-gui/src-tauri"
+    "audiopipe-gui/src-tauri"
 ]

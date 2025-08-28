@@ -30,6 +30,7 @@ pub mod mixer;
 
 /// implementation of the server control stack over TCP
 pub mod control;
+pub mod http;
 
 /// implementation of the audio sender oder UDP
 pub mod streamer;
@@ -106,7 +107,7 @@ pub async fn init_receiver(
     //server.block();
 }
 
-fn setup_cpal_output(
+pub fn setup_cpal_output(
     audio_host: Option<String>,
     device_name: Option<String>,
     bsize: usize,

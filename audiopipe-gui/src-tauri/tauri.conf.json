@@ -1,18 +1,18 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "test-gui",
+  "productName": "audiopipe-gui",
   "version": "0.1.0",
-  "identifier": "com.test-gui.app",
+  "identifier": "com.rillo.audiopipe-gui",
   "build": {
-    "beforeDevCommand": "deno task dev",
+    "beforeDevCommand": "yarn dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "deno task build",
+    "beforeBuildCommand": "yarn build",
     "frontendDist": "../dist"
   },
   "app": {
     "windows": [
       {
-        "title": "test-gui",
+        "title": "audiopipe-gui",
         "width": 800,
         "height": 600
       }
